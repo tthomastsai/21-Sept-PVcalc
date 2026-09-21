@@ -3,10 +3,13 @@ Bond Discount & Yield Calculator - Core Financial Logic (v2.0).
 
 This module provides functions and data structures for:
 1. Bond pricing, present value (PV), discount, premium, and cash flow calculations.
-2. Yield to Maturity (YTM) and Effective Annual Rate (EAR) solver given bond price.
-3. Amortisation schedules using the Effective Interest Method or Straight-Line Method
+2. Term bonds (lump-sum par at maturity).
+3. Serial bonds (equal principal installments with declining interest).
+4. Installment accounts payable / receivable (equal total installments / amortised notes).
+5. Yield to Maturity (YTM) and Effective Annual Rate (EAR) solver given bond price.
+6. Amortisation schedules using the Effective Interest Method or Straight-Line Method
    (noting that the Straight-Line Method is prohibited by IFRS).
-4. Exporting schedules to CSV with customisable decimal precision.
+7. Exporting schedules to CSV with customisable decimal precision.
 """
 
 from dataclasses import dataclass
@@ -25,16 +28,19 @@ class BondResult:
     total_periods: int
     periodic_coupon_payment: float
     periodic_market_rate: float     # Decimal (e.g. 0.035 for 3.5%)
-    pv_coupons: float               # Present value of annuity payments
-    pv_face_value: float            # Present value of lump-sum par value
-    bond_price: float               # Present value of bond (pv_coupons + pv_face_value)
+    pv_coupons: float               # Present value of coupon / interest stream
+    pv_face_value: float            # Present value of principal repayment stream
+    bond_price: float               # Present value of instrument (pv_coupons + pv_face_value)
     discount_amount: float          # face_value - bond_price (positive = discount, negative = premium)
     discount_percentage: float      # (discount_amount / face_value) * 100
     status: Literal["Discount", "Par", "Premium"]
-    total_coupon_interest: float    # total coupon cash paid over life
+    total_coupon_interest: float    # total interest cash paid over life
     total_cash_flows: float         # total coupons + face value
-    net_interest_expense: float     # total cash paid + discount amortised
+    net_interest_expense: float     # total cash paid + discount amortised / total gain
     effective_annual_rate: float = 0.0  # Annual Effective Rate (EAR / AER) in percent
+    instrument_type: str = "term"   # "term", "serial_equal_principal", "serial_equal_payment"
+    periodic_principal_payment: float = 0.0
+    periodic_total_payment: float = 0.0
 
 
 @dataclass
@@ -50,7 +56,7 @@ class YieldResult:
 
 @dataclass
 class AmortizationRow:
-    """A single period in a bond discount/premium amortisation schedule."""
+    """A single period in a bond or installment amortisation schedule."""
     period: int
     beginning_carrying_value: float
     interest_expense: float
@@ -58,6 +64,9 @@ class AmortizationRow:
     discount_amortization: float
     ending_carrying_value: float
     remaining_discount: float
+    principal_repayment: float = 0.0
+    total_cash_payment: float = 0.0
+    outstanding_face_value: float = 0.0
 
 
 VALID_FREQUENCIES = {
@@ -67,6 +76,12 @@ VALID_FREQUENCIES = {
     12: "Monthly (12/year)",
 }
 
+VALID_INSTRUMENT_TYPES = {
+    "term": "Term Bond (Lump-Sum Par at Maturity)",
+    "serial_equal_principal": "Serial Bond (Equal Principal Installments)",
+    "serial_equal_payment": "Installment Note (Equal Total Installments)",
+}
+
 
 def calculate_bond(
     face_value: float,
@@ -74,15 +89,18 @@ def calculate_bond(
     annual_market_rate: float,
     years_to_maturity: float,
     frequency: int = 2,
+    instrument_type: Literal["term", "serial_equal_principal", "serial_equal_payment"] = "term",
 ) -> BondResult:
     """
     Calculate bond present value, discount or premium, and cash flow metrics.
 
-    :param face_value: Par / maturity value of the bond (e.g. 1000.0). Must be > 0.
+    :param face_value: Par / maturity value of the bond or note (e.g. 1000.0). Must be > 0.
     :param annual_coupon_rate: Annual coupon interest rate in percent (e.g. 4.0 for 4%). Must be >= 0.
     :param annual_market_rate: Annual market discount rate / required yield to maturity in percent (e.g. 6.0). Must be >= 0.
     :param years_to_maturity: Time to maturity in years (e.g. 5.0). Must be > 0.
     :param frequency: Payment frequency per year (1=Annual, 2=Semi-Annual, 4=Quarterly, 12=Monthly).
+    :param instrument_type: "term" (lump-sum par), "serial_equal_principal" (serial bond),
+                            or "serial_equal_payment" (installment accounts payable/receivable).
     :return: BondResult dataclass instance.
     :raises ValueError: If parameters are outside valid numerical ranges.
     """
@@ -96,6 +114,8 @@ def calculate_bond(
         raise ValueError("Years to maturity must be greater than 0.")
     if frequency not in VALID_FREQUENCIES:
         raise ValueError(f"Frequency must be one of {list(VALID_FREQUENCIES.keys())} (got {frequency}).")
+    if instrument_type not in VALID_INSTRUMENT_TYPES:
+        raise ValueError(f"Instrument type must be one of {list(VALID_INSTRUMENT_TYPES.keys())} (got {instrument_type}).")
 
     total_periods = int(round(years_to_maturity * frequency))
     if total_periods < 1:
@@ -103,25 +123,72 @@ def calculate_bond(
 
     c = annual_coupon_rate / 100.0
     r = annual_market_rate / 100.0
-
     periodic_market_rate = r / frequency
-    periodic_coupon = face_value * (c / frequency)
 
-    # Present Value of Face Value (Lump Sum)
-    if periodic_market_rate == 0:
-        pv_face_value = face_value
-    else:
-        pv_face_value = face_value / ((1.0 + periodic_market_rate) ** total_periods)
+    if instrument_type == "serial_equal_principal":
+        # Serial Bond: Equal principal repayment each period + interest on declining balance
+        p_prin = face_value / total_periods
+        periodic_coupon = face_value * (c / frequency)
+        periodic_principal_payment = p_prin
+        periodic_total_payment = p_prin + periodic_coupon
 
-    # Present Value of Coupons (Ordinary Annuity)
-    if periodic_coupon == 0:
         pv_coupons = 0.0
-    elif periodic_market_rate == 0:
-        pv_coupons = periodic_coupon * total_periods
-    else:
-        pv_coupons = periodic_coupon * (1.0 - (1.0 + periodic_market_rate) ** (-total_periods)) / periodic_market_rate
+        pv_face_value = 0.0
+        total_coupon_interest = 0.0
 
-    bond_price = pv_coupons + pv_face_value
+        for t in range(1, total_periods + 1):
+            f_beg = face_value - (t - 1) * p_prin
+            coupon_t = f_beg * (c / frequency)
+            total_coupon_interest += coupon_t
+
+            df = 1.0 if periodic_market_rate == 0 else (1.0 + periodic_market_rate) ** (-t)
+            pv_face_value += p_prin * df
+            pv_coupons += coupon_t * df
+
+        bond_price = pv_coupons + pv_face_value
+        total_cash_flows = face_value + total_coupon_interest
+
+    elif instrument_type == "serial_equal_payment":
+        # Installment Accounts Payable/Receivable: Equal total periodic installment (annuity)
+        if c > 0:
+            rate_c = c / frequency
+            pmt = face_value * rate_c / (1.0 - (1.0 + rate_c) ** (-total_periods))
+        else:
+            pmt = face_value / total_periods
+
+        periodic_principal_payment = pmt
+        periodic_total_payment = pmt
+        periodic_coupon = pmt - (face_value / total_periods) if c > 0 else 0.0
+
+        if periodic_market_rate == 0:
+            bond_price = pmt * total_periods
+        else:
+            bond_price = pmt * (1.0 - (1.0 + periodic_market_rate) ** (-total_periods)) / periodic_market_rate
+
+        total_cash_flows = pmt * total_periods
+        total_coupon_interest = max(0.0, total_cash_flows - face_value)
+        pv_face_value = min(face_value, bond_price)
+        pv_coupons = max(0.0, bond_price - pv_face_value)
+
+    else:  # "term" bond (Lump sum at maturity)
+        periodic_coupon = face_value * (c / frequency)
+        periodic_principal_payment = face_value
+        periodic_total_payment = periodic_coupon
+
+        if periodic_market_rate == 0:
+            pv_face_value = face_value
+            pv_coupons = periodic_coupon * total_periods
+        else:
+            pv_face_value = face_value / ((1.0 + periodic_market_rate) ** total_periods)
+            if periodic_coupon == 0:
+                pv_coupons = 0.0
+            else:
+                pv_coupons = periodic_coupon * (1.0 - (1.0 + periodic_market_rate) ** (-total_periods)) / periodic_market_rate
+
+        bond_price = pv_coupons + pv_face_value
+        total_coupon_interest = periodic_coupon * total_periods
+        total_cash_flows = total_coupon_interest + face_value
+
     discount_amount = face_value - bond_price
     discount_percentage = (discount_amount / face_value) * 100.0
 
@@ -134,11 +201,7 @@ def calculate_bond(
     else:
         status = "Premium"
 
-    total_coupon_interest = periodic_coupon * total_periods
-    total_cash_flows = total_coupon_interest + face_value
-    net_interest_expense = total_coupon_interest + discount_amount
-
-    # Annual Effective Rate (EAR / AER)
+    net_interest_expense = total_cash_flows - bond_price
     effective_annual_rate = ((1.0 + periodic_market_rate) ** frequency - 1.0) * 100.0
 
     return BondResult(
@@ -160,6 +223,9 @@ def calculate_bond(
         total_cash_flows=total_cash_flows,
         net_interest_expense=net_interest_expense,
         effective_annual_rate=effective_annual_rate,
+        instrument_type=instrument_type,
+        periodic_principal_payment=periodic_principal_payment,
+        periodic_total_payment=periodic_total_payment,
     )
 
 
@@ -172,24 +238,15 @@ def calculate_yield(
     frequency: int = 2,
     tolerance: float = 1e-9,
     max_iterations: int = 100,
+    instrument_type: Literal["term", "serial_equal_principal", "serial_equal_payment"] = "term",
 ) -> YieldResult:
     """
     Find the annual nominal yield to maturity (YTM) and annual effective rate (EAR)
-    given face value, bond price (present value), coupon rate, maturity/periods, and frequency.
+    given face value, bond price (present value), coupon rate, maturity/periods, frequency,
+    and instrument type.
 
     Uses an analytical Newton-Raphson method with bracketed bisection fallback
     for guaranteed numerical convergence.
-
-    :param face_value: Par value (e.g. 1000.0). Must be > 0.
-    :param bond_price: Current market price / present value (e.g. 914.70). Must be > 0.
-    :param annual_coupon_rate: Annual coupon rate in percent (e.g. 4.0 for 4%). Must be >= 0.
-    :param years_to_maturity: Years to maturity (e.g. 5.0).
-    :param periods: Total compounding periods (e.g. 10). Either years_to_maturity or periods must be specified.
-    :param frequency: Compounding/payment frequency per year (1, 2, 4, 12).
-    :param tolerance: Solver absolute convergence tolerance.
-    :param max_iterations: Maximum number of solver iterations.
-    :return: YieldResult containing nominal YTM (%), effective annual rate (%), periodic rate, and iterations.
-    :raises ValueError: On invalid inputs or inability to solve.
     """
     if face_value <= 0:
         raise ValueError("Face value (par value) must be greater than 0.")
@@ -199,6 +256,8 @@ def calculate_yield(
         raise ValueError("Annual coupon rate cannot be negative.")
     if frequency not in VALID_FREQUENCIES:
         raise ValueError(f"Frequency must be one of {list(VALID_FREQUENCIES.keys())} (got {frequency}).")
+    if instrument_type not in VALID_INSTRUMENT_TYPES:
+        raise ValueError(f"Instrument type must be one of {list(VALID_INSTRUMENT_TYPES.keys())} (got {instrument_type}).")
 
     if periods is not None:
         total_periods = int(periods)
@@ -216,25 +275,28 @@ def calculate_yield(
         raise ValueError("Either years_to_maturity or periods must be provided.")
 
     c = (annual_coupon_rate / 100.0) / frequency
-    periodic_coupon = face_value * c
 
-    # Case 1: Zero-coupon bond - analytical closed-form solution
-    if periodic_coupon == 0:
-        # P = F / (1 + i)^n => 1 + i = (F / P)^(1 / n)
-        periodic_yield = (face_value / bond_price) ** (1.0 / total_periods) - 1.0
-        nominal_yield = periodic_yield * frequency * 100.0
-        effective_annual_rate = ((1.0 + periodic_yield) ** frequency - 1.0) * 100.0
-        return YieldResult(
-            nominal_yield=nominal_yield,
-            effective_annual_rate=effective_annual_rate,
-            periodic_yield=periodic_yield,
-            total_periods=total_periods,
-            years_to_maturity=years,
-            iterations=1,
-        )
+    # Build cash flow schedule based on instrument type
+    cash_flows = []
+    if instrument_type == "serial_equal_principal":
+        p_prin = face_value / total_periods
+        for t in range(1, total_periods + 1):
+            f_beg = face_value - (t - 1) * p_prin
+            cash_flows.append(p_prin + f_beg * c)
+    elif instrument_type == "serial_equal_payment":
+        if c > 0:
+            pmt = face_value * c / (1.0 - (1.0 + c) ** (-total_periods))
+        else:
+            pmt = face_value / total_periods
+        cash_flows = [pmt] * total_periods
+    else:  # "term"
+        periodic_coupon = face_value * c
+        for t in range(1, total_periods):
+            cash_flows.append(periodic_coupon)
+        cash_flows.append(periodic_coupon + face_value)
 
-    # Case 2: Trading exactly at par
-    if abs(bond_price - face_value) < 1e-7:
+    # Par check
+    if abs(bond_price - face_value) < 1e-7 and annual_coupon_rate > 0:
         periodic_yield = c
         nominal_yield = annual_coupon_rate
         effective_annual_rate = ((1.0 + periodic_yield) ** frequency - 1.0) * 100.0
@@ -247,29 +309,31 @@ def calculate_yield(
             iterations=1,
         )
 
-    # Case 3: Coupon bond - iterative solver
     def price_func(rate: float) -> float:
         if abs(rate) < 1e-12:
-            return periodic_coupon * total_periods + face_value
-        factor = (1.0 + rate) ** (-total_periods)
-        return periodic_coupon * (1.0 - factor) / rate + face_value * factor
+            return sum(cash_flows)
+        pv = 0.0
+        for t, cf in enumerate(cash_flows, start=1):
+            pv += cf * ((1.0 + rate) ** (-t))
+        return pv
 
     def price_derivative(rate: float) -> float:
         factor = 1.0 + rate
-        # Lump sum derivative
-        deriv = -total_periods * face_value * (factor ** (-(total_periods + 1)))
-        # Coupon stream derivative: -sum_{k=1}^n k * C * (1 + rate)^(-(k+1))
-        for k in range(1, total_periods + 1):
-            deriv -= k * periodic_coupon * (factor ** (-(k + 1)))
+        deriv = 0.0
+        for t, cf in enumerate(cash_flows, start=1):
+            deriv -= t * cf * (factor ** (-(t + 1)))
         return deriv
 
-    # Approximate initial guess (Fabozzi / Malkiel approximation)
-    initial_guess = (periodic_coupon + (face_value - bond_price) / total_periods) / ((face_value + bond_price) / 2.0)
+    # Initial guess
+    total_cf = sum(cash_flows)
+    total_interest = total_cf - face_value
+    avg_annual_int = (total_interest / years) if years > 0 else 0.0
+    approx_yield = (avg_annual_int + (face_value - bond_price) / years) / ((face_value + bond_price) / 2.0)
+    initial_guess = approx_yield / frequency
     if initial_guess <= -0.9 or initial_guess > 5.0:
         initial_guess = 0.05 / frequency
 
-    # Bracket [low, high] for bisection safety
-    # Price is monotonically decreasing with respect to rate for rate > -1
+    # Bracket [low, high]
     low = -0.999
     high = max(1.0, initial_guess * 2.0)
     while price_func(high) > bond_price:
@@ -326,43 +390,66 @@ def generate_amortization_schedule(
     years_to_maturity: float,
     frequency: int = 2,
     method: Literal["effective", "straight_line"] = "effective",
+    instrument_type: Literal["term", "serial_equal_principal", "serial_equal_payment"] = "term",
 ) -> List[AmortizationRow]:
     """
-    Generate the period-by-period bond amortisation schedule.
+    Generate the period-by-period amortisation schedule.
 
     Supports:
+    - Term Bonds (carrying value converges to Par Value).
+    - Serial Bonds with equal principal installments (converges to 0.00).
+    - Installment Notes Payable/Receivable with equal total payments (converges to 0.00).
+
+    Methods:
     - "effective": Effective Interest Method.
     - "straight_line": Straight-Line Method (prohibited by IFRS).
-
-    :return: List of AmortizationRow items for periods 1 to N.
     """
-    bond = calculate_bond(face_value, annual_coupon_rate, annual_market_rate, years_to_maturity, frequency)
+    bond = calculate_bond(face_value, annual_coupon_rate, annual_market_rate, years_to_maturity, frequency, instrument_type)
     schedule: List[AmortizationRow] = []
 
     carrying_value = bond.bond_price
     total_periods = bond.total_periods
-    periodic_coupon = bond.periodic_coupon_payment
     periodic_rate = bond.periodic_market_rate
     total_discount = bond.discount_amount
 
-    if method == "straight_line":
-        periodic_amortization = total_discount / total_periods if total_periods > 0 else 0.0
+    if instrument_type == "serial_equal_principal":
+        p_prin = face_value / total_periods
         running_carrying_value = carrying_value
+        periodic_amort_sl = total_discount / total_periods if total_periods > 0 else 0.0
 
         for period in range(1, total_periods + 1):
             beginning_val = running_carrying_value
-            if period == total_periods:
-                # Final period adjustment to absorb rounding and hit exact face value
-                amort = face_value - beginning_val
-                ending_val = face_value
-            else:
-                amort = periodic_amortization
-                ending_val = beginning_val + amort
+            f_beg = face_value - (period - 1) * p_prin
+            f_end = face_value - period * p_prin
+            coupon_t = f_beg * (bond.annual_coupon_rate / 100.0 / frequency)
+            principal_t = p_prin
+            total_cash_t = principal_t + coupon_t
 
-            interest_expense = periodic_coupon + amort
-            remaining_discount = face_value - ending_val
+            if method == "straight_line":
+                if period == total_periods:
+                    ending_val = 0.0
+                    amort = - (beginning_val - principal_t)
+                    interest_expense = coupon_t + amort
+                else:
+                    amort = periodic_amort_sl
+                    interest_expense = coupon_t + amort
+                    ending_val = beginning_val + amort - principal_t
+            else:  # effective interest method
+                if period == total_periods:
+                    ending_val = 0.0
+                    interest_expense = total_cash_t - beginning_val
+                    amort = interest_expense - coupon_t
+                else:
+                    interest_expense = beginning_val * periodic_rate
+                    amort = interest_expense - coupon_t
+                    ending_val = beginning_val + amort - principal_t
+
+            remaining_discount = f_end - ending_val
             if abs(remaining_discount) < 1e-9:
                 remaining_discount = 0.0
+            if abs(ending_val) < 1e-9:
+                ending_val = 0.0
+
             running_carrying_value = ending_val
 
             schedule.append(
@@ -370,31 +457,41 @@ def generate_amortization_schedule(
                     period=period,
                     beginning_carrying_value=beginning_val,
                     interest_expense=interest_expense,
-                    coupon_payment=periodic_coupon,
+                    coupon_payment=coupon_t,
                     discount_amortization=amort,
                     ending_carrying_value=ending_val,
                     remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
+                    principal_repayment=principal_t,
+                    total_cash_payment=total_cash_t,
+                    outstanding_face_value=f_end,
                 )
             )
 
-    else:  # effective interest method
+    elif instrument_type == "serial_equal_payment":
+        pmt = bond.periodic_total_payment
         running_carrying_value = carrying_value
+
         for period in range(1, total_periods + 1):
             beginning_val = running_carrying_value
 
             if period == total_periods:
-                # Final period: adjust amortization so carrying value converges exactly to face value
-                amort = face_value - beginning_val
-                interest_expense = periodic_coupon + amort
-                ending_val = face_value
+                ending_val = 0.0
+                principal_t = beginning_val
+                interest_expense = pmt - principal_t
+                coupon_t = interest_expense
+                amort = interest_expense
+                remaining_discount = 0.0
             else:
                 interest_expense = beginning_val * periodic_rate
-                amort = interest_expense - periodic_coupon
-                ending_val = beginning_val + amort
+                principal_t = pmt - interest_expense
+                ending_val = beginning_val - principal_t
+                coupon_t = interest_expense
+                amort = interest_expense
+                remaining_discount = max(0.0, ending_val)
 
-            remaining_discount = face_value - ending_val
-            if abs(remaining_discount) < 1e-9:
-                remaining_discount = 0.0
+            if abs(ending_val) < 1e-9:
+                ending_val = 0.0
+
             running_carrying_value = ending_val
 
             schedule.append(
@@ -402,12 +499,93 @@ def generate_amortization_schedule(
                     period=period,
                     beginning_carrying_value=beginning_val,
                     interest_expense=interest_expense,
-                    coupon_payment=periodic_coupon,
+                    coupon_payment=coupon_t,
                     discount_amortization=amort,
                     ending_carrying_value=ending_val,
-                    remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
+                    remaining_discount=remaining_discount,
+                    principal_repayment=principal_t,
+                    total_cash_payment=pmt,
+                    outstanding_face_value=ending_val,
                 )
             )
+
+    else:  # "term" bond
+        periodic_coupon = bond.periodic_coupon_payment
+        if method == "straight_line":
+            periodic_amortization = total_discount / total_periods if total_periods > 0 else 0.0
+            running_carrying_value = carrying_value
+
+            for period in range(1, total_periods + 1):
+                beginning_val = running_carrying_value
+                if period == total_periods:
+                    amort = face_value - beginning_val
+                    ending_val = face_value
+                    principal_t = face_value
+                    total_cash_t = periodic_coupon + face_value
+                else:
+                    amort = periodic_amortization
+                    ending_val = beginning_val + amort
+                    principal_t = 0.0
+                    total_cash_t = periodic_coupon
+
+                interest_expense = periodic_coupon + amort
+                remaining_discount = face_value - ending_val
+                if abs(remaining_discount) < 1e-9:
+                    remaining_discount = 0.0
+                running_carrying_value = ending_val
+
+                schedule.append(
+                    AmortizationRow(
+                        period=period,
+                        beginning_carrying_value=beginning_val,
+                        interest_expense=interest_expense,
+                        coupon_payment=periodic_coupon,
+                        discount_amortization=amort,
+                        ending_carrying_value=ending_val,
+                        remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
+                        principal_repayment=principal_t,
+                        total_cash_payment=total_cash_t,
+                        outstanding_face_value=face_value,
+                    )
+                )
+
+        else:  # effective interest method
+            running_carrying_value = carrying_value
+            for period in range(1, total_periods + 1):
+                beginning_val = running_carrying_value
+
+                if period == total_periods:
+                    amort = face_value - beginning_val
+                    interest_expense = periodic_coupon + amort
+                    ending_val = face_value
+                    principal_t = face_value
+                    total_cash_t = periodic_coupon + face_value
+                else:
+                    interest_expense = beginning_val * periodic_rate
+                    amort = interest_expense - periodic_coupon
+                    ending_val = beginning_val + amort
+                    principal_t = 0.0
+                    total_cash_t = periodic_coupon
+
+                remaining_discount = face_value - ending_val
+                if abs(remaining_discount) < 1e-9:
+                    remaining_discount = 0.0
+                running_carrying_value = ending_val
+
+                schedule.append(
+                    AmortizationRow(
+                        period=period,
+                        beginning_carrying_value=beginning_val,
+                        interest_expense=interest_expense,
+                        coupon_payment=periodic_coupon,
+                        discount_amortization=amort,
+                        ending_carrying_value=ending_val,
+                        remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
+                        principal_repayment=principal_t,
+                        total_cash_payment=total_cash_t,
+                        outstanding_face_value=face_value,
+                    )
+                )
 
     return schedule
 
@@ -428,6 +606,8 @@ def export_schedule_to_csv(
             "Beginning Carrying Value",
             "Interest Expense",
             "Coupon Payment",
+            "Principal Repaid",
+            "Total Payment",
             "Discount Amortisation",
             "Ending Carrying Value",
             "Remaining Unamortised Discount",
@@ -441,6 +621,8 @@ def export_schedule_to_csv(
                 "Beginning Carrying Value": f"{row.beginning_carrying_value:.{decimals}f}",
                 "Interest Expense": f"{row.interest_expense:.{decimals}f}",
                 "Coupon Payment": f"{row.coupon_payment:.{decimals}f}",
+                "Principal Repaid": f"{row.principal_repayment:.{decimals}f}",
+                "Total Payment": f"{row.total_cash_payment:.{decimals}f}",
                 "Discount Amortisation": f"{row.discount_amortization:.{decimals}f}",
                 "Ending Carrying Value": f"{row.ending_carrying_value:.{decimals}f}",
                 "Remaining Unamortised Discount": f"{row.remaining_discount:.{decimals}f}",

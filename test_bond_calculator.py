@@ -1,5 +1,5 @@
 """
-Unit tests for bond_calculator.py (v2.0)
+Unit tests for bond_calculator.py (v2.0 with Installment & Serial Bonds)
 """
 
 import os
@@ -16,8 +16,10 @@ from bond_calculator import (
     generate_amortization_schedule,
     export_schedule_to_csv,
     VALID_FREQUENCIES,
+    VALID_INSTRUMENT_TYPES,
     BondResult,
     YieldResult,
+    AmortizationRow,
 )
 
 
@@ -273,6 +275,145 @@ class TestBondCalculator(unittest.TestCase):
             calculate_bond(1000, 5, 5, 0)  # zero years
         with self.assertRaises(ValueError):
             calculate_bond(1000, 5, 5, 5, frequency=3)  # unsupported frequency
+
+    # =========================================================================
+    # New Tests for Serial Bonds & Installment Accounts Payable / Receivable
+    # =========================================================================
+
+    def test_serial_bond_equal_principal(self):
+        # Serial bond: $100,000 face value, 5 years, annual frequency (freq=1)
+        # 4% coupon rate, 6% market rate.
+        # $20,000 principal repaid each year.
+        res = calculate_bond(
+            face_value=100000.0,
+            annual_coupon_rate=4.0,
+            annual_market_rate=6.0,
+            years_to_maturity=5.0,
+            frequency=1,
+            instrument_type="serial_equal_principal",
+        )
+
+        self.assertEqual(res.instrument_type, "serial_equal_principal")
+        self.assertEqual(res.total_periods, 5)
+        self.assertEqual(res.periodic_principal_payment, 20000.0)
+        self.assertEqual(res.status, "Discount")
+        # Total interest paid: 4000 + 3200 + 2400 + 1600 + 800 = 12000
+        self.assertEqual(res.total_coupon_interest, 12000.0)
+        self.assertEqual(res.total_cash_flows, 112000.0)
+        # Price is less than 100000 because coupon (4%) < market rate (6%)
+        self.assertLess(res.bond_price, 100000.0)
+        self.assertGreater(res.discount_amount, 0.0)
+
+        schedule = generate_amortization_schedule(
+            face_value=100000.0,
+            annual_coupon_rate=4.0,
+            annual_market_rate=6.0,
+            years_to_maturity=5.0,
+            frequency=1,
+            method="effective",
+            instrument_type="serial_equal_principal",
+        )
+
+        self.assertEqual(len(schedule), 5)
+        # First period beginning carrying value equals initial bond price
+        self.assertAlmostEqual(schedule[0].beginning_carrying_value, res.bond_price, places=2)
+        # Each period repays $20,000 principal
+        for row in schedule:
+            self.assertEqual(row.principal_repayment, 20000.0)
+        # Final period ending carrying value converges exactly to 0.00
+        self.assertEqual(schedule[-1].ending_carrying_value, 0.0)
+        self.assertEqual(schedule[-1].remaining_discount, 0.0)
+
+    def test_installment_accounts_payable_equal_payments(self):
+        # Installment note: $50,000, 4 years, annual, 5% stated rate, 5% market rate (at par)
+        res = calculate_bond(
+            face_value=50000.0,
+            annual_coupon_rate=5.0,
+            annual_market_rate=5.0,
+            years_to_maturity=4.0,
+            frequency=1,
+            instrument_type="serial_equal_payment",
+        )
+
+        self.assertEqual(res.instrument_type, "serial_equal_payment")
+        self.assertAlmostEqual(res.bond_price, 50000.0, places=2)
+        self.assertEqual(res.status, "Par")
+        # PMT = 50000 * 0.05 / (1 - 1.05^-4) = 14100.59
+        self.assertAlmostEqual(res.periodic_total_payment, 14100.59, places=2)
+
+        schedule = generate_amortization_schedule(
+            face_value=50000.0,
+            annual_coupon_rate=5.0,
+            annual_market_rate=5.0,
+            years_to_maturity=4.0,
+            frequency=1,
+            method="effective",
+            instrument_type="serial_equal_payment",
+        )
+
+        self.assertEqual(len(schedule), 4)
+        for row in schedule:
+            self.assertAlmostEqual(row.total_cash_payment, 14100.59, places=2)
+        # Converges to 0.0 at maturity
+        self.assertEqual(schedule[-1].ending_carrying_value, 0.0)
+
+    def test_installment_note_zero_coupon_discount(self):
+        # Trade accounts payable / promissory note: $30,000 in 3 equal annual payments of $10,000
+        # 0% stated interest, 6% market rate
+        res = calculate_bond(
+            face_value=30000.0,
+            annual_coupon_rate=0.0,
+            annual_market_rate=6.0,
+            years_to_maturity=3.0,
+            frequency=1,
+            instrument_type="serial_equal_payment",
+        )
+
+        self.assertEqual(res.status, "Discount")
+        # PV = 10000 * (1 - 1.06^-3) / 0.06 = 26730.12
+        self.assertAlmostEqual(res.bond_price, 26730.12, places=2)
+        self.assertAlmostEqual(res.discount_amount, 3269.88, places=2)
+
+        schedule = generate_amortization_schedule(
+            face_value=30000.0,
+            annual_coupon_rate=0.0,
+            annual_market_rate=6.0,
+            years_to_maturity=3.0,
+            frequency=1,
+            method="effective",
+            instrument_type="serial_equal_payment",
+        )
+
+        self.assertEqual(len(schedule), 3)
+        self.assertEqual(schedule[-1].ending_carrying_value, 0.0)
+        # Sum of principal repayments should equal initial carrying value / PV
+        total_prin = sum(r.principal_repayment for r in schedule)
+        self.assertAlmostEqual(total_prin, 26730.12, places=2)
+
+    def test_yield_solver_serial_and_installment(self):
+        # 1. Solve yield for serial bond
+        sb_res = calculate_bond(100000.0, 4.0, 6.0, 5.0, frequency=1, instrument_type="serial_equal_principal")
+        y_sb = calculate_yield(
+            face_value=100000.0,
+            bond_price=sb_res.bond_price,
+            annual_coupon_rate=4.0,
+            years_to_maturity=5.0,
+            frequency=1,
+            instrument_type="serial_equal_principal",
+        )
+        self.assertAlmostEqual(y_sb.nominal_yield, 6.0, places=3)
+
+        # 2. Solve yield for installment note
+        inst_res = calculate_bond(30000.0, 0.0, 6.0, 3.0, frequency=1, instrument_type="serial_equal_payment")
+        y_inst = calculate_yield(
+            face_value=30000.0,
+            bond_price=inst_res.bond_price,
+            annual_coupon_rate=0.0,
+            years_to_maturity=3.0,
+            frequency=1,
+            instrument_type="serial_equal_payment",
+        )
+        self.assertAlmostEqual(y_inst.nominal_yield, 6.0, places=3)
 
 
 if __name__ == "__main__":

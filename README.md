@@ -1,51 +1,33 @@
-# Bond Discount & Yield Calculator (v2.0)
+# Bond & Installment Accounts Calculator (v2.0)
 
-A financial engineering application to value bonds, solve for yields and effective rates, calculate discounts or premiums, and generate period-by-period amortisation schedules.
-
----
-
-## What's New in Version 2.0
-
-- **Yield & Effective Rate Solver**:
-  - Solve for the annual nominal **Yield to Maturity (YTM)** and **Annual Effective Rate (EAR / AER)** when entering **Face Value**, **Present Value (Bond Price)**, **Coupon Rate**, **Compounding Frequency**, and **Period** (Maturity).
-  - Uses an analytical Newton-Raphson numerical engine with bracketed bisection fallback for rapid, guaranteed convergence.
-- **Morandi Aesthetic Palette**:
-  - Desktop GUI styled in Giorgio Morandi-inspired muted, low-saturation tones: warm greige/oatmeal background, dusty slate header, dusty sage action buttons, and muted terracotta/olive/mauve KPI accents.
-- **Accounting Method Labels**:
-  - `Effective Interest Method` (clean standard).
-  - `Straight-Line Method (prohibited by IFRS)` (noting IFRS non-compliance).
-- **British English Localization**:
-  - User interface, tables, export headers, and interpretations standardise on British English (*Amortisation*, *Unamortised*, *Colour*).
-- **Real-Time Decimal Precision Adjuster**:
-  - `[ ➖ Less ]` and `[ ➕ Add ]` controls allow adjusting display precision from **0 up to 8 decimal places** in real time across KPI cards, breakdown tables, and amortisation schedules.
+A comprehensive financial engineering application to value bonds and installment notes, solve for yields and effective rates, calculate discounts or premiums, and generate period-by-period amortisation schedules.
 
 ---
 
-## Features
+## Key Features
 
+- **Debt & Instrument Types**:
+  1. **Term Bond (Lump-Sum Par at Maturity)**: Standard bonds where periodic coupons are paid on full face value, and the entire principal $F$ is repaid at final maturity. Carrying value converges to $F$.
+  2. **Serial Bond (Equal Principal Installments)**: Principal is retired in equal installments ($F / n$) each period. Coupon interest decreases over time as principal is paid down. Carrying value converges to **$0.00**.
+  3. **Installment Accounts Payable / Receivable (Equal Total Installments)**: Equal periodic payments ($PMT$, fully amortised loan/annuity). Supports interest-bearing notes ($c > 0$) and non-interest-bearing trade notes ($c = 0$) discounted at market rate $r$. Carrying value converges to **$0.00**.
 - **Dual Calculation Modes**:
-  - **Mode 1 (PV Mode)**: Calculate Bond Market Price and Present Value given Yield.
-  - **Mode 2 (Yield Mode)**: Solve Nominal Yield (YTM) and Annual Effective Rate (EAR) given Bond Price.
-- **Compounding Frequencies**:
-  - Annual ($m=1$)
-  - Semi-Annual ($m=2$, standard for corporate and treasury bonds)
-  - Quarterly ($m=4$)
-  - Monthly ($m=12$)
+  - **Mode 1 (PV Mode)**: Calculate Present Value / Issue Price given Market Yield.
+  - **Mode 2 (Yield Mode)**: Solve Nominal Yield (YTM) and Annual Effective Rate (EAR / AER) given Present Value / Price.
+- **Morandi Aesthetic Palette**:
+  - Desktop GUI styled in Giorgio Morandi-inspired low-saturation, soothing earthy tones (warm greige canvas `#f4f1ea`, muted slate header `#4d5656`, dusty sage buttons `#6c8276`, and terracotta/olive/mauve KPI accents).
 - **Amortisation Schedules**:
   - **Effective Interest Method**
   - **Straight-Line Method (prohibited by IFRS)**
-  - Guaranteed convergence of ending carrying value to Par Value at maturity.
-- **Desktop Graphical Interface (GUI)**:
-  - Morandi-themed dashboard with live KPI cards.
-  - Component breakdown tab with plain-English financial interpretations.
-  - Alternating-row formatted table (`ttk.Treeview`) with vertical scrollbar.
-  - One-click **Export to CSV** with custom decimal precision.
-  - Quick presets (Discount, Deep Discount, Zero-Coupon, Par, and Yield Solver).
-  - Zero-Coupon bond toggle.
-- **Terminal CLI Mode (`--cli`)**:
-  - Interactive terminal mode supporting both calculation modes, British English prompts, and custom decimal tables.
+  - Detailed period-by-period table displaying: Beginning Value, Interest Expense, Coupon / Stated Interest, Principal Repaid, Total Cash Paid, Discount Amortisation, and Ending Carrying Value.
+- **British English Localization**:
+  - Standardised on British English (*Amortisation*, *Unamortised Discount*, *Colour*).
+- **Real-Time Decimal Precision Adjuster**:
+  - `[ ➖ Less ]` and `[ ➕ Add ]` controls dynamically format all numbers from **0 up to 8 decimal places** without precision loss.
+- **Export & Presets**:
+  - One-click **Export to CSV** matching the active decimal precision.
+  - Quick presets for Term Bonds, Serial Bonds, Installment Trade Notes, Par Bonds, and Yield Solvers.
 - **Automated Unit Tests**:
-  - 15 unit test cases covering pricing, yield solving, schedule convergence, frequencies, and input validation.
+  - 19 automated unit tests verifying term bonds, serial bonds, installment notes, yield solving, schedule convergence, and error bounds.
 
 ---
 
@@ -71,31 +53,39 @@ python -m unittest test_bond_calculator.py -v
 
 ## Financial Formulas
 
-### 1. Bond Price / Present Value ($P$)
+### 1. Term Bond (Lump-Sum at Maturity)
 
 $$P(i) = C \times \left[ \frac{1 - (1 + i)^{-n}}{i} \right] + \frac{F}{(1 + i)^n}$$
 
 Where:
-- $F$ = Face / Par Value
-- $c$ = Annual Coupon Rate ($c \ge 0$)
-- $r$ = Annual Nominal Market Rate / Yield to Maturity (YTM)
-- $m$ = Compounding Frequency per year ($m \in \{1, 2, 4, 12\}$)
-- $n = \text{years} \times m$ (Total compounding periods)
-- $C = \frac{F \times c}{m}$ (Periodic coupon payment)
-- $i = \frac{r}{m}$ (Periodic discount rate)
-- $\text{Discount Amount} = F - P$ (Positive when $P < F$)
-- $\text{Discount \%} = \frac{F - P}{F} \times 100\%$
+- $F$ = Face / Par Value, $c$ = Annual coupon rate, $r$ = Annual market yield, $m$ = Payment frequency
+- $n = \text{years} \times m$, $C = \frac{F \times c}{m}$, $i = \frac{r}{m}$
 
-### 2. Yield to Maturity (YTM) & Annual Effective Rate (EAR)
+### 2. Serial Bond (Equal Principal Installments)
 
-When given Bond Price $P$, solve for periodic rate $i$ such that:
+Principal is repaid in $n$ equal installments $P_{\text{prin}} = \frac{F}{n}$.
+In period $t$, outstanding face value is $F_t = F - (t - 1) P_{\text{prin}}$ and coupon is $C_t = F_t \times \frac{c}{m}$.
 
-$$f(i) = C \left[ \frac{1 - (1 + i)^{-n}}{i} \right] + F(1 + i)^{-n} - P = 0$$
+$$P(i) = \sum_{t=1}^n \frac{P_{\text{prin}} + C_t}{(1 + i)^t}$$
 
-- **Nominal Annual Yield (YTM)**:
-  $$r_{\text{nominal}} = i \times m \times 100\%$$
-- **Annual Effective Rate (EAR / AER)**:
-  $$r_{\text{effective}} = \left( (1 + i)^m - 1 \right) \times 100\%$$
+### 3. Installment Note (Equal Total Installments)
+
+Periodic installment:
+- If $c > 0$: $PMT = F \times \frac{c/m}{1 - (1 + c/m)^{-n}}$
+- If $c = 0$ (non-interest-bearing note): $PMT = \frac{F}{n}$
+
+Present Value at market discount rate $i = \frac{r}{m}$:
+
+$$P(i) = PMT \times \left[ \frac{1 - (1 + i)^{-n}}{i} \right]$$
+
+### 4. Yield to Maturity (YTM) & Effective Annual Rate (EAR)
+
+For any cash flow stream $CF_1, \dots, CF_n$, solve for periodic rate $i$ such that:
+
+$$\sum_{t=1}^n \frac{CF_t}{(1 + i)^t} - P = 0$$
+
+- **Nominal Annual Yield (YTM)**: $r_{\text{nominal}} = i \times m \times 100\%$
+- **Annual Effective Rate (EAR / AER)**: $r_{\text{effective}} = \left( (1 + i)^m - 1 \right) \times 100\%$
 
 ---
 
@@ -106,6 +96,6 @@ $$f(i) = C \left[ \frac{1 - (1 + i)^{-n}}{i} \right] + F(1 + i)^{-n} - P = 0$$
 ├── app.py                  # Standard entry point launcher
 ├── bond_app.py             # Desktop GUI (Morandi theme) & CLI application
 ├── bond_calculator.py      # Core financial calculations, yield solver & amortisation
-├── test_bond_calculator.py # Comprehensive unit test suite (15 tests)
+├── test_bond_calculator.py # Comprehensive unit test suite (19 tests)
 └── README.md               # Documentation & formula reference
 ```
