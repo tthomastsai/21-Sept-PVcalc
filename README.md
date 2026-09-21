@@ -1,30 +1,34 @@
-# Bond & Installment Accounts Calculator (v2.0)
+# Bond & Installment Accounts Calculator (v2.0.1)
 
-A comprehensive financial engineering application to value bonds and installment notes, solve for yields and effective rates, calculate discounts or premiums, and generate period-by-period amortisation schedules.
+Value long-term payables / receivables with live yield solving and amortisation.
 
 ---
 
 ## Key Features
 
+- **IFRS 9 (*Financial Instruments*) Terminology Alignment**:
+  - Measurement at **amortised cost** using the **effective interest method** and **effective interest rate (EIR)**.
+  - Consistent use of **Carrying Amount** (rather than carrying value or book value) across KPI metrics, amortisation tables, CLI, and CSV exports.
+  - Straight-line amortisation explicitly marked as **(prohibited by IFRS)**.
 - **Debt & Instrument Types**:
-  1. **Term Bond (Lump-Sum Par at Maturity)**: Standard bonds where periodic coupons are paid on full face value, and the entire principal $F$ is repaid at final maturity. Carrying value converges to $F$.
-  2. **Serial Bond (Equal Principal Installments)**: Principal is retired in equal installments ($F / n$) each period. Coupon interest decreases over time as principal is paid down. Carrying value converges to **$0.00**.
-  3. **Installment Accounts Payable / Receivable (Equal Total Installments)**: Equal periodic payments ($PMT$, fully amortised loan/annuity). Supports interest-bearing notes ($c > 0$) and non-interest-bearing trade notes ($c = 0$) discounted at market rate $r$. Carrying value converges to **$0.00**.
+  1. **Term Bond (Lump-Sum Par at Maturity)**: Standard bonds where periodic coupons are paid on full face value, and the entire principal $F$ is repaid at final maturity. Carrying amount converges to par $F$.
+  2. **Serial Bond (Equal Principal Installments)**: Principal is retired in equal installments ($F / n$) each period. Coupon interest decreases over time as principal is paid down. Carrying amount converges to **$0.00**.
+  3. **Installment Accounts Payable / Receivable (Equal Total Installments)**: Equal periodic payments ($PMT$, fully amortised note/annuity). Defaults to **Zero-Coupon / Non-Interest-Bearing** trade notes discounted at market yield $r$, or supports interest-bearing installment notes ($c > 0$). Carrying amount converges to **$0.00**.
 - **Dual Calculation Modes**:
-  - **Mode 1 (PV Mode)**: Calculate Present Value / Issue Price given Market Yield.
+  - **Mode 1 (PV Mode)**: Calculate Present Value / Initial Carrying Amount given Market Yield.
   - **Mode 2 (Yield Mode)**: Solve Nominal Yield (YTM) and Annual Effective Rate (EAR / AER) given Present Value / Price.
 - **Morandi Aesthetic Palette**:
   - Desktop GUI styled in Giorgio Morandi-inspired low-saturation, soothing earthy tones (warm greige canvas `#f4f1ea`, muted slate header `#4d5656`, dusty sage buttons `#6c8276`, and terracotta/olive/mauve KPI accents).
 - **Amortisation Schedules**:
   - **Effective Interest Method**
   - **Straight-Line Method (prohibited by IFRS)**
-  - Detailed period-by-period table displaying: Beginning Value, Interest Expense, Coupon / Stated Interest, Principal Repaid, Total Cash Paid, Discount Amortisation, and Ending Carrying Value.
+  - Detailed period-by-period table displaying: Period, Beg Carrying Amount, Interest Expense, Coupon / Stated Interest, Principal Repaid, Total Cash Paid, Discount Amortisation, and End Carrying Amount.
 - **British English Localization**:
   - Standardised on British English (*Amortisation*, *Unamortised Discount*, *Colour*).
 - **Real-Time Decimal Precision Adjuster**:
   - `[ ➖ Less ]` and `[ ➕ Add ]` controls dynamically format all numbers from **0 up to 8 decimal places** without precision loss.
 - **Export & Presets**:
-  - One-click **Export to CSV** matching the active decimal precision.
+  - One-click **Export to CSV** matching the active decimal precision with IFRS 9 headers.
   - Quick presets for Term Bonds, Serial Bonds, Installment Trade Notes, Par Bonds, and Yield Solvers.
 - **Automated Unit Tests**:
   - 19 automated unit tests verifying term bonds, serial bonds, installment notes, yield solving, schedule convergence, and error bounds.

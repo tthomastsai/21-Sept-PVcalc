@@ -213,11 +213,13 @@ class TestBondCalculator(unittest.TestCase):
         )
 
         self.assertEqual(len(schedule), 10)
-        # First period beginning carrying value equals initial bond price
+        # First period beginning carrying amount equals initial bond price
+        self.assertAlmostEqual(schedule[0].beginning_carrying_amount, 914.70, places=2)
         self.assertAlmostEqual(schedule[0].beginning_carrying_value, 914.70, places=2)
         # First period coupon payment
         self.assertEqual(schedule[0].coupon_payment, 20.0)
-        # Ending carrying value of final period converges exactly to face value
+        # Ending carrying amount of final period converges exactly to face value
+        self.assertEqual(schedule[-1].ending_carrying_amount, 1000.0)
         self.assertEqual(schedule[-1].ending_carrying_value, 1000.0)
         # Remaining discount at maturity is zero
         self.assertEqual(schedule[-1].remaining_discount, 0.0)
@@ -255,8 +257,8 @@ class TestBondCalculator(unittest.TestCase):
             with open(temp_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 self.assertIn("Period", content)
-                self.assertIn("Beginning Carrying Value", content)
-                self.assertIn("Ending Carrying Value", content)
+                self.assertIn("Beginning Carrying Amount", content)
+                self.assertIn("Ending Carrying Amount", content)
                 self.assertIn("Discount Amortisation", content)
         finally:
             if os.path.exists(temp_path):

@@ -56,17 +56,27 @@ class YieldResult:
 
 @dataclass
 class AmortizationRow:
-    """A single period in a bond or installment amortisation schedule."""
+    """A single period in a bond or installment amortisation schedule (IFRS 9 aligned)."""
     period: int
-    beginning_carrying_value: float
+    beginning_carrying_amount: float
     interest_expense: float
     coupon_payment: float
     discount_amortization: float
-    ending_carrying_value: float
+    ending_carrying_amount: float
     remaining_discount: float
     principal_repayment: float = 0.0
     total_cash_payment: float = 0.0
     outstanding_face_value: float = 0.0
+
+    @property
+    def beginning_carrying_value(self) -> float:
+        """Backward-compatible alias for beginning_carrying_amount."""
+        return self.beginning_carrying_amount
+
+    @property
+    def ending_carrying_value(self) -> float:
+        """Backward-compatible alias for ending_carrying_amount."""
+        return self.ending_carrying_amount
 
 
 VALID_FREQUENCIES = {
@@ -396,7 +406,7 @@ def generate_amortization_schedule(
     Generate the period-by-period amortisation schedule.
 
     Supports:
-    - Term Bonds (carrying value converges to Par Value).
+    - Term Bonds (carrying amount converges to Par Value).
     - Serial Bonds with equal principal installments (converges to 0.00).
     - Installment Notes Payable/Receivable with equal total payments (converges to 0.00).
 
@@ -455,11 +465,11 @@ def generate_amortization_schedule(
             schedule.append(
                 AmortizationRow(
                     period=period,
-                    beginning_carrying_value=beginning_val,
+                    beginning_carrying_amount=beginning_val,
                     interest_expense=interest_expense,
                     coupon_payment=coupon_t,
                     discount_amortization=amort,
-                    ending_carrying_value=ending_val,
+                    ending_carrying_amount=ending_val,
                     remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
                     principal_repayment=principal_t,
                     total_cash_payment=total_cash_t,
@@ -497,11 +507,11 @@ def generate_amortization_schedule(
             schedule.append(
                 AmortizationRow(
                     period=period,
-                    beginning_carrying_value=beginning_val,
+                    beginning_carrying_amount=beginning_val,
                     interest_expense=interest_expense,
                     coupon_payment=coupon_t,
                     discount_amortization=amort,
-                    ending_carrying_value=ending_val,
+                    ending_carrying_amount=ending_val,
                     remaining_discount=remaining_discount,
                     principal_repayment=principal_t,
                     total_cash_payment=pmt,
@@ -537,11 +547,11 @@ def generate_amortization_schedule(
                 schedule.append(
                     AmortizationRow(
                         period=period,
-                        beginning_carrying_value=beginning_val,
+                        beginning_carrying_amount=beginning_val,
                         interest_expense=interest_expense,
                         coupon_payment=periodic_coupon,
                         discount_amortization=amort,
-                        ending_carrying_value=ending_val,
+                        ending_carrying_amount=ending_val,
                         remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
                         principal_repayment=principal_t,
                         total_cash_payment=total_cash_t,
@@ -575,11 +585,11 @@ def generate_amortization_schedule(
                 schedule.append(
                     AmortizationRow(
                         period=period,
-                        beginning_carrying_value=beginning_val,
+                        beginning_carrying_amount=beginning_val,
                         interest_expense=interest_expense,
                         coupon_payment=periodic_coupon,
                         discount_amortization=amort,
-                        ending_carrying_value=ending_val,
+                        ending_carrying_amount=ending_val,
                         remaining_discount=max(0.0, remaining_discount) if bond.status != "Premium" else remaining_discount,
                         principal_repayment=principal_t,
                         total_cash_payment=total_cash_t,
@@ -594,7 +604,7 @@ def export_schedule_to_csv(
     schedule: List[AmortizationRow], filepath: str, decimals: int = 2
 ) -> None:
     """
-    Export an amortisation schedule to a CSV file.
+    Export an amortisation schedule to a CSV file (IFRS 9 aligned).
 
     :param schedule: List of AmortizationRow records.
     :param filepath: Destination file path.
@@ -603,13 +613,13 @@ def export_schedule_to_csv(
     with open(filepath, mode="w", newline="", encoding="utf-8") as csvfile:
         fieldnames = [
             "Period",
-            "Beginning Carrying Value",
+            "Beginning Carrying Amount",
             "Interest Expense",
             "Coupon Payment",
             "Principal Repaid",
             "Total Payment",
             "Discount Amortisation",
-            "Ending Carrying Value",
+            "Ending Carrying Amount",
             "Remaining Unamortised Discount",
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -618,12 +628,12 @@ def export_schedule_to_csv(
         for row in schedule:
             writer.writerow({
                 "Period": row.period,
-                "Beginning Carrying Value": f"{row.beginning_carrying_value:.{decimals}f}",
+                "Beginning Carrying Amount": f"{row.beginning_carrying_amount:.{decimals}f}",
                 "Interest Expense": f"{row.interest_expense:.{decimals}f}",
                 "Coupon Payment": f"{row.coupon_payment:.{decimals}f}",
                 "Principal Repaid": f"{row.principal_repayment:.{decimals}f}",
                 "Total Payment": f"{row.total_cash_payment:.{decimals}f}",
                 "Discount Amortisation": f"{row.discount_amortization:.{decimals}f}",
-                "Ending Carrying Value": f"{row.ending_carrying_value:.{decimals}f}",
+                "Ending Carrying Amount": f"{row.ending_carrying_amount:.{decimals}f}",
                 "Remaining Unamortised Discount": f"{row.remaining_discount:.{decimals}f}",
             })

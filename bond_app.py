@@ -1,5 +1,5 @@
 """
-Bond Discount & Yield Calculator - GUI & CLI Application (v2.0).
+Bond Discount & Yield Calculator - GUI & CLI Application (v2.0.1).
 
 Provides:
 - Morandi-themed Tkinter desktop graphical interface.
@@ -40,7 +40,7 @@ from bond_calculator import (
     VALID_INSTRUMENT_TYPES,
 )
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 # Morandi Aesthetic Colour Palette (Giorgio Morandi-inspired low-saturation tones)
 PALETTE = {
@@ -109,7 +109,7 @@ class BondCalculatorApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("Bond & Installment Calculator (v2.0)")
+        self.title("Bond & Installment Calculator (v2.0.1)")
         self.geometry("1100x760")
         self.minsize(960, 680)
         self.configure(bg=PALETTE["bg_main"])
@@ -260,7 +260,7 @@ class BondCalculatorApp(tk.Tk):
 
         subtitle = tk.Label(
             header,
-            text="Value term bonds, serial bonds, and installment accounts payable/receivable with live yield solving and amortisation.",
+            text="Value long-term payables / receivables with live yield solving and amortisation.",
             font=self.font_subtitle,
             fg=PALETTE["sub_header"],
             bg=PALETTE["bg_header"],
@@ -344,7 +344,7 @@ class BondCalculatorApp(tk.Tk):
             state="readonly",
         )
         self.cb_inst.pack(fill="x", pady=(1, 4))
-        self.cb_inst.bind("<<ComboboxSelected>>", lambda e: self.calculate())
+        self.cb_inst.bind("<<ComboboxSelected>>", lambda e: self._on_instrument_change())
 
         # Section 3: Financial Parameters
         def add_field(label_text: str, var: tk.StringVar, suffix: str = ""):
@@ -492,6 +492,24 @@ class BondCalculatorApp(tk.Tk):
 
         self.bind("<Return>", lambda event: self.calculate())
 
+    def _on_instrument_change(self):
+        inst_str = self.var_instrument.get()
+        inst_type = INSTRUMENT_LABEL_TO_KEY.get(inst_str, "term")
+        if inst_type == "serial_equal_payment":
+            # For installment notes (payables/receivables), auto-tick zero-coupon by default
+            if not hasattr(self, "saved_coupon"):
+                self.saved_coupon = self.var_coupon_rate.get()
+            self.var_zero_coupon.set(True)
+            self.var_coupon_rate.set("0.00")
+            self.entry_coupon.configure(state="disabled")
+        else:
+            # If switching away from installment note and coupon was zeroed out, restore previous rate
+            if hasattr(self, "saved_coupon") and self.var_zero_coupon.get() and self.var_coupon_rate.get() == "0.00":
+                self.var_zero_coupon.set(False)
+                self.var_coupon_rate.set(self.saved_coupon if self.saved_coupon != "0.00" else "4.00")
+                self.entry_coupon.configure(state="normal")
+        self.calculate()
+
     def _on_freq_change(self):
         try:
             years = float(self.var_years.get().strip())
@@ -599,7 +617,7 @@ class BondCalculatorApp(tk.Tk):
 
         self.kpi_c1_title = tk.StringVar(value="Present Value / Price")
         self.kpi_c1_val = tk.StringVar(value="$0.00")
-        self.kpi_c1_sub = tk.StringVar(value="Initial Carrying Value")
+        self.kpi_c1_sub = tk.StringVar(value="Initial Carrying Amount")
 
         self.kpi_c2_title = tk.StringVar(value="Discount / Premium")
         self.kpi_c2_val = tk.StringVar(value="$0.00")
@@ -773,22 +791,22 @@ class BondCalculatorApp(tk.Tk):
         self.tree = ttk.Treeview(container, columns=cols, show="headings", selectmode="browse")
 
         self.tree.heading("period", text="Period")
-        self.tree.heading("beg_val", text="Beginning Value")
+        self.tree.heading("beg_val", text="Beg Carrying Amount")
         self.tree.heading("interest_exp", text="Interest Expense")
         self.tree.heading("coupon", text="Coupon / Int")
         self.tree.heading("principal", text="Principal Repaid")
         self.tree.heading("total_cash", text="Total Cash Paid")
         self.tree.heading("amort", text="Discount Amort.")
-        self.tree.heading("end_val", text="Ending Value")
+        self.tree.heading("end_val", text="End Carrying Amount")
 
         self.tree.column("period", width=50, anchor="center")
-        self.tree.column("beg_val", width=105, anchor="e")
+        self.tree.column("beg_val", width=125, anchor="e")
         self.tree.column("interest_exp", width=100, anchor="e")
         self.tree.column("coupon", width=90, anchor="e")
         self.tree.column("principal", width=95, anchor="e")
         self.tree.column("total_cash", width=95, anchor="e")
         self.tree.column("amort", width=90, anchor="e")
-        self.tree.column("end_val", width=105, anchor="e")
+        self.tree.column("end_val", width=125, anchor="e")
 
         scroll_y = ttk.Scrollbar(container, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll_y.set)
@@ -878,7 +896,7 @@ class BondCalculatorApp(tk.Tk):
             self.lbl_mode_status.config(text="Mode: Calculate Price from Yield (PV Mode)")
             self.kpi_c1_title.set("Present Value / Price")
             self.kpi_c1_val.set(f"${res.bond_price:,.{d}f}")
-            self.kpi_c1_sub.set("Initial Carrying Value")
+            self.kpi_c1_sub.set("Initial Carrying Amount")
 
             self.kpi_c2_title.set("Discount / Premium")
             if res.status == "Discount":
@@ -923,7 +941,7 @@ class BondCalculatorApp(tk.Tk):
                 self.kpi_c3_val.set(f"${res.discount_amount:,.{d}f}")
                 self.kpi_c3_sub.set(f"DISCOUNT ({res.discount_percentage:.{d}f}% of Par)")
             elif res.status == "Premium":
-                self.kpi_c3_val.set(f"${abs(res.discount_amount):,.{d}f}")
+                self.kpi_c2_val.set(f"${abs(res.discount_amount):,.{d}f}")
                 self.kpi_c3_sub.set(f"PREMIUM ({abs(res.discount_percentage):.{d}f}% of Par)")
             else:
                 self.kpi_c3_val.set(f"$0.{'0'*d}")
@@ -944,23 +962,23 @@ class BondCalculatorApp(tk.Tk):
         self.lbl_total_inflow.config(text=f"${res.total_cash_flows:,.{d}f}")
         self.lbl_net_profit.config(text=f"${res.net_interest_expense:,.{d}f}")
 
-        # Financial Interpretation (British English)
+        # Financial Interpretation (British English & IFRS 9)
         if inst_type == "serial_equal_principal":
             explanation = (
                 f"• SERIAL BOND: Total principal of ${res.face_value:,.{d}f} is repaid in {res.total_periods} equal installments "
                 f"of ${res.periodic_principal_payment:,.{d}f} per period.\n"
                 f"• Periodic coupon interest decreases each period as outstanding principal is retired.\n"
                 f"• Present Value / Issue Price: ${res.bond_price:,.{d}f} (Discount/Premium: ${res.discount_amount:,.{d}f}).\n"
-                f"• Ending carrying value converges to $0.00 at the end of period {res.total_periods} as the issue is fully retired.\n"
+                f"• Ending carrying amount converges to $0.00 at the end of period {res.total_periods} as the issue is fully retired.\n"
                 f"• Total cash paid over life: ${res.total_cash_flows:,.{d}f} (Total interest expense: ${res.net_interest_expense:,.{d}f}, EAR: {res.effective_annual_rate:.{d}f}%)."
             )
         elif inst_type == "serial_equal_payment":
             explanation = (
                 f"• INSTALLMENT NOTE / ACCOUNTS PAYABLE & RECEIVABLE: Repaid in {res.total_periods} equal periodic installments "
                 f"of ${res.periodic_total_payment:,.{d}f} each.\n"
-                f"• Each payment covers interest on the carrying balance, with the remainder amortising the principal.\n"
-                f"• Present Value / Initial Carrying Value: ${res.bond_price:,.{d}f} (Discount: ${res.discount_amount:,.{d}f}).\n"
-                f"• Ending carrying value converges exactly to $0.00 at maturity.\n"
+                f"• Each payment covers interest on the carrying amount, with the remainder amortising the principal.\n"
+                f"• Present Value / Initial Carrying Amount: ${res.bond_price:,.{d}f} (Discount: ${res.discount_amount:,.{d}f}).\n"
+                f"• Ending carrying amount converges exactly to $0.00 at maturity.\n"
                 f"• Total cash paid: ${res.total_cash_flows:,.{d}f} (Total net interest: ${res.net_interest_expense:,.{d}f}, EAR: {res.effective_annual_rate:.{d}f}%)."
             )
         else:
@@ -969,7 +987,7 @@ class BondCalculatorApp(tk.Tk):
                     f"• TERM BOND: Trades at a DISCOUNT of ${res.discount_amount:,.{d}f} ({res.discount_percentage:.{d}f}% of par).\n"
                     f"• Because coupon rate ({coupon_rate:.{d}f}%) < market rate ({market_rate:.{d}f}%), "
                     f"investors purchase the bond below par at ${res.bond_price:,.{d}f} to achieve the market yield.\n"
-                    f"• Entire principal of ${res.face_value:,.{d}f} is repaid at maturity, converging carrying value to par.\n"
+                    f"• Entire principal of ${res.face_value:,.{d}f} is repaid at maturity, converging carrying amount to par.\n"
                     f"• Total return: ${res.net_interest_expense:,.{d}f} (EAR: {res.effective_annual_rate:.{d}f}%)."
                 )
             elif res.status == "Premium":
@@ -1001,13 +1019,13 @@ class BondCalculatorApp(tk.Tk):
                 "end",
                 values=(
                     row.period,
-                    f"${row.beginning_carrying_value:,.{d}f}",
+                    f"${row.beginning_carrying_amount:,.{d}f}",
                     f"${row.interest_expense:,.{d}f}",
                     f"${row.coupon_payment:,.{d}f}",
                     f"${row.principal_repayment:,.{d}f}",
                     f"${row.total_cash_payment:,.{d}f}",
                     f"${row.discount_amortization:,.{d}f}",
-                    f"${row.ending_carrying_value:,.{d}f}",
+                    f"${row.ending_carrying_amount:,.{d}f}",
                 ),
                 tags=(tag,),
             )
@@ -1086,7 +1104,7 @@ class BondCalculatorApp(tk.Tk):
 def run_cli():
     """Run bond discount & yield calculator interactively in terminal mode."""
     print("=" * 68)
-    print("      BOND & INSTALLMENT CALCULATOR & AMORTISATION (v2.0 CLI)     ")
+    print("      BOND & INSTALLMENT CALCULATOR & AMORTISATION (v2.0.1 CLI)   ")
     print("=" * 68)
     print("Press Enter to accept [default values] shown in brackets.\n")
 
@@ -1211,21 +1229,21 @@ def run_cli():
             col_w = max(11, d + 8)
             print("\n" + "-" * 110)
             print(
-                f"{'Per':>4} | {'Beg Value':>{col_w}} | {'Interest Exp':>{col_w}} | "
+                f"{'Per':>4} | {'Beg Amount':>{col_w}} | {'Interest Exp':>{col_w}} | "
                 f"{'Coupon Paid':>{col_w}} | {'Principal':>{col_w}} | {'Total Cash':>{col_w}} | "
-                f"{'Amortisation':>{col_w}} | {'End Value':>{col_w}}"
+                f"{'Amortisation':>{col_w}} | {'End Amount':>{col_w}}"
             )
             print("-" * 110)
             for row in schedule:
                 print(
                     f"{row.period:4d} | "
-                    f"${row.beginning_carrying_value:{col_w},.{d}f} | "
+                    f"${row.beginning_carrying_amount:{col_w},.{d}f} | "
                     f"${row.interest_expense:{col_w},.{d}f} | "
                     f"${row.coupon_payment:{col_w},.{d}f} | "
                     f"${row.principal_repayment:{col_w},.{d}f} | "
                     f"${row.total_cash_payment:{col_w},.{d}f} | "
                     f"${row.discount_amortization:{col_w},.{d}f} | "
-                    f"${row.ending_carrying_value:{col_w},.{d}f}"
+                    f"${row.ending_carrying_amount:{col_w},.{d}f}"
                 )
             print("-" * 110)
 
@@ -1244,7 +1262,7 @@ def run_cli():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Bond & Installment Accounts Calculator (v2.0)")
+    parser = argparse.ArgumentParser(description="Bond & Installment Accounts Calculator (v2.0.1)")
     parser.add_argument("--cli", action="store_true", help="Launch in interactive command-line terminal mode")
     args = parser.parse_args()
 
