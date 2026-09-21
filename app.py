@@ -1,5 +1,5 @@
 """
-Entry point for Bond Discount & Present Value (PV) Calculator.
+Entry point for Bond Discount & Yield Calculator (v2.0).
 """
 
 import os

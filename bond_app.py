@@ -1,8 +1,17 @@
 """
-Bond Discount Calculator - GUI & CLI Application.
+Bond Discount & Yield Calculator - GUI & CLI Application (v2.0).
 
-Provides a modern Tkinter desktop graphical interface and an interactive
-terminal CLI mode (--cli).
+Provides:
+- Morandi-themed Tkinter desktop graphical interface.
+- Dual calculation modes:
+    1. Calculate Present Value / Bond Price from Market Yield.
+    2. Solve Yield to Maturity (YTM) and Effective Annual Rate (EAR) from Bond Price.
+- Amortisation methods:
+    - Effective Interest Method
+    - Straight-Line Method (prohibited by IFRS)
+- Real-time adjustable decimal precision (+ / -).
+- British English localization throughout.
+- Interactive terminal CLI mode (--cli).
 """
 
 import argparse
@@ -10,21 +19,60 @@ import os
 import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-from typing import Optional
+from typing import Optional, List
 
-# Ensure directory is on sys.path
+# Ensure local directory is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bond_calculator import (
     calculate_bond,
+    calculate_yield,
     generate_amortization_schedule,
     export_schedule_to_csv,
     BondResult,
+    YieldResult,
     AmortizationRow,
     VALID_FREQUENCIES,
 )
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
+
+# Morandi Aesthetic Colour Palette (Giorgio Morandi-inspired low-saturation tones)
+PALETTE = {
+    "bg_main": "#f4f1ea",         # Warm oatmeal / greige background
+    "bg_header": "#4d5656",       # Muted slate / charcoal header
+    "text_header": "#f5f3ef",     # Warm bone white text
+    "sub_header": "#b8c0bc",      # Soft sage-grey subtitle text
+    "card_bg": "#fcfbf9",         # Soft warm ivory card surface
+    "card_border": "#dfdad2",     # Gentle muted border
+    "text_primary": "#2d3232",    # Dark charcoal body text
+    "text_muted": "#757c7c",      # Muted slate label text
+    "text_accent": "#5b6b64",     # Muted forest/sage
+    # Action buttons
+    "btn_primary": "#6c8276",     # Dusty sage green primary button
+    "btn_primary_hover": "#5a6f64",
+    "btn_primary_text": "#ffffff",
+    "btn_secondary": "#ded8ce",   # Muted warm stone secondary button
+    "btn_secondary_hover": "#d0c9bd",
+    "btn_preset": "#ede8e0",      # Pale dust preset button
+    "btn_preset_hover": "#dfd9cf",
+    # KPI Accent top bars (Morandi dusty tones)
+    "kpi_bar_1": "#687d8c",       # Dusty slate blue
+    "kpi_bar_2": "#b37b67",       # Dusty terracotta
+    "kpi_bar_3": "#7d8c70",       # Muted olive / sage
+    "kpi_bar_4": "#8c747a",       # Dusty mauve
+    # Table styling
+    "table_header_bg": "#eae5dc", # Muted sand table heading
+    "table_header_fg": "#373c3d",
+    "table_row_even": "#f8f6f1",  # Soft warm ivory alternate row
+    "table_row_odd": "#ffffff",
+    "table_select_bg": "#849890", # Dusty sage table selection
+    "table_select_fg": "#ffffff",
+    # Badges
+    "badge_discount": "#b37b67",  # Dusty terracotta
+    "badge_premium": "#687d8c",   # Dusty slate blue
+    "badge_par": "#7d8c70",       # Muted olive
+}
 
 # Frequency label mapping
 FREQ_LABEL_TO_INT = {
@@ -35,22 +83,25 @@ FREQ_LABEL_TO_INT = {
 }
 FREQ_INT_TO_LABEL = {v: k for k, v in FREQ_LABEL_TO_INT.items()}
 
+# Method mapping (British English & IFRS note)
 METHOD_LABEL_TO_KEY = {
-    "Effective Interest Method (GAAP/IFRS)": "effective",
-    "Straight-Line Method": "straight_line",
+    "Effective Interest Method": "effective",
+    "Straight-Line Method (prohibited by IFRS)": "straight_line",
 }
+METHOD_KEY_TO_LABEL = {v: k for k, v in METHOD_LABEL_TO_KEY.items()}
 
 
 class BondCalculatorApp(tk.Tk):
-    """Modern Desktop GUI for Bond Discount & Amortization Calculations."""
+    """Modern Desktop GUI for Bond Valuation, Yield Solving, and Amortisation."""
 
     def __init__(self):
         super().__init__()
-        self.title("Bond Discount Calculator & Amortization Schedule")
-        self.geometry("1000x720")
-        self.minsize(880, 640)
-        self.configure(bg="#f8fafc")
+        self.title("Bond Discount & Yield Calculator (v2.0)")
+        self.geometry("1060x750")
+        self.minsize(920, 660)
+        self.configure(bg=PALETTE["bg_main"])
 
+        # Typography
         self.font_title = ("Segoe UI", 15, "bold")
         self.font_subtitle = ("Segoe UI", 9)
         self.font_section = ("Segoe UI", 11, "bold")
@@ -59,159 +110,266 @@ class BondCalculatorApp(tk.Tk):
         self.font_metric_val = ("Segoe UI", 16, "bold")
         self.font_metric_sub = ("Segoe UI", 8)
 
-        # State
+        # Mode State: "price" (Price from Yield) or "yield" (Yield from Price)
+        self.var_mode = tk.StringVar(value="price")
+
+        # Input Variables
         self.var_face_value = tk.StringVar(value="1000.00")
+        self.var_price = tk.StringVar(value="914.70")
         self.var_coupon_rate = tk.StringVar(value="4.00")
         self.var_market_rate = tk.StringVar(value="6.00")
         self.var_years = tk.StringVar(value="5.0")
+        self.var_periods_display = tk.StringVar(value="10 compounding periods")
         self.var_freq = tk.StringVar(value="Semi-Annual (2/year)")
-        self.var_method = tk.StringVar(value="Effective Interest Method (GAAP/IFRS)")
+        self.var_method = tk.StringVar(value="Effective Interest Method")
         self.var_zero_coupon = tk.BooleanVar(value=False)
 
+        # Decimal Precision State (default 2, range 0-8)
+        self.current_decimals = 2
+        self.lbl_decimals_text = tk.StringVar(value="2 Decimals")
+
+        # Results State
         self.last_bond_result: Optional[BondResult] = None
-        self.last_schedule: list[AmortizationRow] = []
+        self.last_yield_result: Optional[YieldResult] = None
+        self.last_schedule: List[AmortizationRow] = []
 
         self._init_styles()
         self._create_widgets()
+        self._on_mode_change()
         self.calculate()
 
     def _init_styles(self):
         style = ttk.Style(self)
         style.theme_use("clam")
 
-        style.configure(".", font=self.font_body)
-        style.configure("TFrame", background="#f8fafc")
-        style.configure("Card.TFrame", background="#ffffff", relief="flat")
-        style.configure("TLabel", background="#ffffff", font=self.font_body, foreground="#1e293b")
-        style.configure("Header.TLabel", font=self.font_section, foreground="#0f172a")
+        style.configure(".", font=self.font_body, background=PALETTE["bg_main"])
+        style.configure("TFrame", background=PALETTE["bg_main"])
+        style.configure("Card.TFrame", background=PALETTE["card_bg"], relief="flat")
+        style.configure("TLabel", background=PALETTE["card_bg"], font=self.font_body, foreground=PALETTE["text_primary"])
+        style.configure("Header.TLabel", font=self.font_section, foreground=PALETTE["text_primary"])
 
-        # Buttons
+        # Primary Button (Dusty Sage)
         style.configure(
             "Primary.TButton",
             font=("Segoe UI", 10, "bold"),
-            background="#2563eb",
-            foreground="#ffffff",
+            background=PALETTE["btn_primary"],
+            foreground=PALETTE["btn_primary_text"],
             padding=(12, 7),
             borderwidth=0,
         )
         style.map(
             "Primary.TButton",
-            background=[("active", "#1d4ed8"), ("pressed", "#1e40af")],
+            background=[("active", PALETTE["btn_primary_hover"]), ("pressed", PALETTE["btn_primary_hover"])],
         )
 
+        # Secondary Button (Muted Warm Stone)
         style.configure(
             "Secondary.TButton",
             font=self.font_body,
-            background="#e2e8f0",
-            foreground="#1e293b",
+            background=PALETTE["btn_secondary"],
+            foreground=PALETTE["text_primary"],
             padding=(8, 5),
             borderwidth=0,
         )
         style.map(
             "Secondary.TButton",
-            background=[("active", "#cbd5e1"), ("pressed", "#94a3b8")],
+            background=[("active", PALETTE["btn_secondary_hover"]), ("pressed", PALETTE["btn_secondary_hover"])],
         )
 
+        # Preset Button
         style.configure(
             "Preset.TButton",
             font=("Segoe UI", 8),
-            background="#f1f5f9",
-            foreground="#334155",
+            background=PALETTE["btn_preset"],
+            foreground=PALETTE["text_primary"],
             padding=(6, 4),
             borderwidth=1,
         )
         style.map(
             "Preset.TButton",
-            background=[("active", "#e2e8f0"), ("pressed", "#cbd5e1")],
+            background=[("active", PALETTE["btn_preset_hover"]), ("pressed", PALETTE["btn_preset_hover"])],
         )
 
-        # Treeview styling
+        # Radiobuttons & Checkbuttons
+        style.configure("TRadiobutton", background=PALETTE["card_bg"], foreground=PALETTE["text_primary"], font=self.font_body)
+        style.configure("TCheckbutton", background=PALETTE["card_bg"], foreground=PALETTE["text_primary"], font=self.font_body)
+
+        # Treeview styling (Morandi tones)
         style.configure(
             "Treeview",
-            background="#ffffff",
-            foreground="#1e293b",
-            fieldbackground="#ffffff",
-            rowheight=24,
+            background=PALETTE["table_row_odd"],
+            foreground=PALETTE["text_primary"],
+            fieldbackground=PALETTE["table_row_odd"],
+            rowheight=25,
             font=("Segoe UI", 9),
         )
         style.configure(
             "Treeview.Heading",
-            background="#f1f5f9",
-            foreground="#0f172a",
+            background=PALETTE["table_header_bg"],
+            foreground=PALETTE["table_header_fg"],
             font=("Segoe UI", 9, "bold"),
-            padding=(4, 4),
+            padding=(5, 5),
         )
-        style.map("Treeview", background=[("selected", "#2563eb")], foreground=[("selected", "#ffffff")])
+        style.map("Treeview", background=[("selected", PALETTE["table_select_bg"])], foreground=[("selected", PALETTE["table_select_fg"])])
 
-        # Notebook
-        style.configure("TNotebook", background="#f8fafc")
-        style.configure("TNotebook.Tab", font=("Segoe UI", 9, "bold"), padding=(12, 6))
+        # Notebook tabs
+        style.configure("TNotebook", background=PALETTE["bg_main"])
+        style.configure("TNotebook.Tab", font=("Segoe UI", 9, "bold"), padding=(14, 6))
 
     def _create_widgets(self):
-        # 1. Top Header
-        header = tk.Frame(self, bg="#1e293b", padx=20, pady=12)
+        # 1. Top Header (Dusty Slate)
+        header = tk.Frame(self, bg=PALETTE["bg_header"], padx=22, pady=12)
         header.pack(fill="x")
 
+        title_row = tk.Frame(header, bg=PALETTE["bg_header"])
+        title_row.pack(fill="x")
+
         title = tk.Label(
-            header,
-            text="Bond Discount Calculator & Amortization Schedule",
+            title_row,
+            text="Bond Discount & Yield Calculator",
             font=self.font_title,
-            fg="#ffffff",
-            bg="#1e293b",
+            fg=PALETTE["text_header"],
+            bg=PALETTE["bg_header"],
         )
-        title.pack(anchor="w")
+        title.pack(side="left")
+
+        ver_badge = tk.Label(
+            title_row,
+            text=f"v{__version__}",
+            font=("Segoe UI", 8, "bold"),
+            fg="#ffffff",
+            bg=PALETTE["kpi_bar_1"],
+            padx=6,
+            pady=2,
+        )
+        ver_badge.pack(side="left", padx=(10, 0))
 
         subtitle = tk.Label(
             header,
-            text="Value corporate & treasury bonds, calculate discounts or premiums, and inspect full amortization schedules.",
+            text="Value bonds, solve yields & effective rates, and inspect full amortisation schedules with adjustable precision.",
             font=self.font_subtitle,
-            fg="#94a3b8",
-            bg="#1e293b",
+            fg=PALETTE["sub_header"],
+            bg=PALETTE["bg_header"],
         )
-        subtitle.pack(anchor="w", pady=(2, 0))
+        subtitle.pack(anchor="w", pady=(3, 0))
 
-        # 2. Main body container
-        main_container = tk.Frame(self, bg="#f8fafc", padx=16, pady=12)
+        # 2. Main Container
+        main_container = tk.Frame(self, bg=PALETTE["bg_main"], padx=16, pady=12)
         main_container.pack(fill="both", expand=True)
 
-        # Left Column: Input Form (Fixed width)
-        left_col = tk.Frame(main_container, bg="#ffffff", bd=1, relief="solid", padx=16, pady=14, width=320)
+        # Left Column: Inputs (Fixed width)
+        left_col = tk.Frame(
+            main_container,
+            bg=PALETTE["card_bg"],
+            bd=1,
+            relief="solid",
+            highlightbackground=PALETTE["card_border"],
+            highlightthickness=1,
+            padx=16,
+            pady=14,
+            width=340,
+        )
         left_col.pack(side="left", fill="y", padx=(0, 12))
         left_col.pack_propagate(False)
 
-        # Right Column: KPI Cards + Tabs
-        right_col = tk.Frame(main_container, bg="#f8fafc")
+        # Right Column: Toolbar + KPI Cards + Tabs
+        right_col = tk.Frame(main_container, bg=PALETTE["bg_main"])
         right_col.pack(side="right", fill="both", expand=True)
 
         self._build_input_form(left_col)
         self._build_results_area(right_col)
 
     def _build_input_form(self, parent: tk.Frame):
-        tk.Label(parent, text="Bond Parameters", font=self.font_section, bg="#ffffff", fg="#0f172a").pack(
-            anchor="w", pady=(0, 10)
+        # Section 1: Calculation Mode
+        tk.Label(
+            parent,
+            text="Calculation Mode",
+            font=self.font_section,
+            bg=PALETTE["card_bg"],
+            fg=PALETTE["text_primary"],
+        ).pack(anchor="w", pady=(0, 6))
+
+        mode_box = tk.Frame(
+            parent,
+            bg=PALETTE["bg_main"],
+            bd=1,
+            relief="solid",
+            highlightbackground=PALETTE["card_border"],
+            highlightthickness=1,
+            padx=8,
+            pady=6,
         )
+        mode_box.pack(fill="x", pady=(0, 10))
+
+        rb_price = ttk.Radiobutton(
+            mode_box,
+            text="Calculate Price from Yield (PV Mode)",
+            variable=self.var_mode,
+            value="price",
+            command=self._on_mode_change,
+        )
+        rb_price.pack(anchor="w", pady=2)
+
+        rb_yield = ttk.Radiobutton(
+            mode_box,
+            text="Solve Yield & Effective Rate from Price",
+            variable=self.var_mode,
+            value="yield",
+            command=self._on_mode_change,
+        )
+        rb_yield.pack(anchor="w", pady=2)
+
+        # Section 2: Bond Parameters
+        tk.Label(
+            parent,
+            text="Bond Parameters",
+            font=self.font_section,
+            bg=PALETTE["card_bg"],
+            fg=PALETTE["text_primary"],
+        ).pack(anchor="w", pady=(6, 4))
 
         def add_field(label_text: str, var: tk.StringVar, suffix: str = ""):
-            f = tk.Frame(parent, bg="#ffffff")
-            f.pack(fill="x", pady=4)
-            lbl = tk.Label(f, text=label_text, font=self.font_bold, bg="#ffffff", fg="#334155")
+            f = tk.Frame(parent, bg=PALETTE["card_bg"])
+            f.pack(fill="x", pady=3)
+            lbl = tk.Label(f, text=label_text, font=self.font_bold, bg=PALETTE["card_bg"], fg=PALETTE["text_primary"])
             lbl.pack(anchor="w")
-            row = tk.Frame(f, bg="#ffffff")
-            row.pack(fill="x", pady=(2, 0))
+            row = tk.Frame(f, bg=PALETTE["card_bg"])
+            row.pack(fill="x", pady=(1, 0))
             ent = ttk.Entry(row, textvariable=var, font=self.font_body)
             ent.pack(side="left", fill="x", expand=True)
             if suffix:
-                s_lbl = tk.Label(row, text=suffix, font=self.font_body, bg="#ffffff", fg="#64748b", padx=4)
+                s_lbl = tk.Label(row, text=suffix, font=self.font_body, bg=PALETTE["card_bg"], fg=PALETTE["text_muted"], padx=4)
                 s_lbl.pack(side="right")
-            return ent
+            return ent, lbl
 
-        add_field("Face Value (Par Value)", self.var_face_value, "$")
-        self.entry_coupon = add_field("Annual Coupon Rate", self.var_coupon_rate, "%")
-        add_field("Market Rate / Yield (YTM)", self.var_market_rate, "%")
-        add_field("Years to Maturity", self.var_years, "Years")
+        self.entry_face, _ = add_field("Face Value (Par Value)", self.var_face_value, "$")
+        self.entry_price, self.lbl_price_field = add_field("Present Value (Bond Price)", self.var_price, "$")
+        self.entry_coupon, _ = add_field("Annual Coupon Rate", self.var_coupon_rate, "%")
+        self.entry_market_rate, self.lbl_market_field = add_field("Annual Market Rate / Yield (YTM)", self.var_market_rate, "%")
+
+        # Years to Maturity & Period Info
+        f_years = tk.Frame(parent, bg=PALETTE["card_bg"])
+        f_years.pack(fill="x", pady=3)
+        lbl_years = tk.Label(f_years, text="Years to Maturity", font=self.font_bold, bg=PALETTE["card_bg"], fg=PALETTE["text_primary"])
+        lbl_years.pack(anchor="w")
+        row_years = tk.Frame(f_years, bg=PALETTE["card_bg"])
+        row_years.pack(fill="x", pady=(1, 0))
+        self.entry_years = ttk.Entry(row_years, textvariable=self.var_years, font=self.font_body)
+        self.entry_years.pack(side="left", fill="x", expand=True)
+        lbl_years_unit = tk.Label(row_years, text="Years", font=self.font_body, bg=PALETTE["card_bg"], fg=PALETTE["text_muted"], padx=4)
+        lbl_years_unit.pack(side="right")
+
+        self.lbl_periods_note = tk.Label(
+            parent,
+            textvariable=self.var_periods_display,
+            font=("Segoe UI", 8),
+            bg=PALETTE["card_bg"],
+            fg=PALETTE["text_accent"],
+        )
+        self.lbl_periods_note.pack(anchor="w", pady=(0, 2))
 
         # Zero-coupon toggle
-        def on_toggle_zero_coupon():
+        def on_toggle_zero():
             if self.var_zero_coupon.get():
                 self.saved_coupon = self.var_coupon_rate.get()
                 self.var_coupon_rate.set("0.00")
@@ -226,117 +384,222 @@ class BondCalculatorApp(tk.Tk):
             parent,
             text="Zero-Coupon Bond (0% coupon)",
             variable=self.var_zero_coupon,
-            command=on_toggle_zero_coupon,
+            command=on_toggle_zero,
         )
-        chk_zero.pack(anchor="w", pady=(2, 8))
+        chk_zero.pack(anchor="w", pady=(2, 4))
 
-        # Payment Frequency
-        f_freq = tk.Frame(parent, bg="#ffffff")
-        f_freq.pack(fill="x", pady=4)
-        tk.Label(f_freq, text="Payment Frequency", font=self.font_bold, bg="#ffffff", fg="#334155").pack(anchor="w")
+        # Compounding Frequency
+        f_freq = tk.Frame(parent, bg=PALETTE["card_bg"])
+        f_freq.pack(fill="x", pady=3)
+        tk.Label(f_freq, text="Compounding Frequency", font=self.font_bold, bg=PALETTE["card_bg"], fg=PALETTE["text_primary"]).pack(anchor="w")
         self.cb_freq = ttk.Combobox(
             f_freq,
             textvariable=self.var_freq,
             values=list(FREQ_LABEL_TO_INT.keys()),
             state="readonly",
         )
-        self.cb_freq.pack(fill="x", pady=(2, 0))
+        self.cb_freq.pack(fill="x", pady=(1, 0))
+        self.cb_freq.bind("<<ComboboxSelected>>", lambda e: self._on_freq_change())
 
-        # Amortization Method
-        f_method = tk.Frame(parent, bg="#ffffff")
-        f_method.pack(fill="x", pady=4)
-        tk.Label(f_method, text="Amortization Method", font=self.font_bold, bg="#ffffff", fg="#334155").pack(anchor="w")
+        # Amortisation Method
+        f_method = tk.Frame(parent, bg=PALETTE["card_bg"])
+        f_method.pack(fill="x", pady=3)
+        tk.Label(f_method, text="Amortisation Method", font=self.font_bold, bg=PALETTE["card_bg"], fg=PALETTE["text_primary"]).pack(anchor="w")
         self.cb_method = ttk.Combobox(
             f_method,
             textvariable=self.var_method,
             values=list(METHOD_LABEL_TO_KEY.keys()),
             state="readonly",
         )
-        self.cb_method.pack(fill="x", pady=(2, 0))
+        self.cb_method.pack(fill="x", pady=(1, 0))
+        self.cb_method.bind("<<ComboboxSelected>>", lambda e: self.calculate())
 
         # Action Buttons
-        btn_frame = tk.Frame(parent, bg="#ffffff")
-        btn_frame.pack(fill="x", pady=(14, 10))
+        btn_frame = tk.Frame(parent, bg=PALETTE["card_bg"])
+        btn_frame.pack(fill="x", pady=(10, 8))
 
         btn_calc = ttk.Button(btn_frame, text="Calculate", style="Primary.TButton", command=self.calculate)
-        btn_calc.pack(fill="x", pady=(0, 6))
+        btn_calc.pack(fill="x", pady=(0, 4))
 
         btn_reset = ttk.Button(btn_frame, text="Reset Defaults", style="Secondary.TButton", command=self.reset_defaults)
         btn_reset.pack(fill="x")
 
         # Quick Presets
-        tk.Label(parent, text="Presets / Examples", font=self.font_bold, bg="#ffffff", fg="#64748b").pack(
-            anchor="w", pady=(12, 4)
-        )
-        p_frame = tk.Frame(parent, bg="#ffffff")
+        tk.Label(
+            parent,
+            text="Presets & Examples",
+            font=self.font_bold,
+            bg=PALETTE["card_bg"],
+            fg=PALETTE["text_muted"],
+        ).pack(anchor="w", pady=(8, 3))
+
+        p_frame = tk.Frame(parent, bg=PALETTE["card_bg"])
         p_frame.pack(fill="x")
 
         ttk.Button(
             p_frame,
             text="Discount: 5Y (4% vs 6%)",
             style="Preset.TButton",
-            command=lambda: self.load_preset(1000, 4.0, 6.0, 5, 2),
-        ).pack(fill="x", pady=2)
+            command=lambda: self.load_preset(1000, 4.0, 6.0, 5, 2, mode="price"),
+        ).pack(fill="x", pady=1)
 
         ttk.Button(
             p_frame,
             text="Deep Discount: 10Y (2% vs 8%)",
             style="Preset.TButton",
-            command=lambda: self.load_preset(1000, 2.0, 8.0, 10, 2),
-        ).pack(fill="x", pady=2)
+            command=lambda: self.load_preset(1000, 2.0, 8.0, 10, 2, mode="price"),
+        ).pack(fill="x", pady=1)
 
         ttk.Button(
             p_frame,
             text="Zero-Coupon: 10Y @ 5%",
             style="Preset.TButton",
-            command=lambda: self.load_preset(1000, 0.0, 5.0, 10, 2, zero=True),
-        ).pack(fill="x", pady=2)
+            command=lambda: self.load_preset(1000, 0.0, 5.0, 10, 2, zero=True, mode="price"),
+        ).pack(fill="x", pady=1)
 
         ttk.Button(
             p_frame,
             text="Par Bond: 5Y (5% vs 5%)",
             style="Preset.TButton",
-            command=lambda: self.load_preset(1000, 5.0, 5.0, 5, 2),
-        ).pack(fill="x", pady=2)
+            command=lambda: self.load_preset(1000, 5.0, 5.0, 5, 2, mode="price"),
+        ).pack(fill="x", pady=1)
 
-        # Bind Enter to calculate
+        ttk.Button(
+            p_frame,
+            text="Yield Solver: $914.70 -> 6% YTM",
+            style="Preset.TButton",
+            command=lambda: self.load_preset(1000, 4.0, 6.0, 5, 2, price=914.70, mode="yield"),
+        ).pack(fill="x", pady=1)
+
         self.bind("<Return>", lambda event: self.calculate())
 
+    def _on_freq_change(self):
+        try:
+            years = float(self.var_years.get().strip())
+            freq = FREQ_LABEL_TO_INT.get(self.var_freq.get(), 2)
+            periods = int(round(years * freq))
+            self.var_periods_display.set(f"{periods} compounding periods ({years:g} yrs @ {freq}/yr)")
+        except ValueError:
+            pass
+        self.calculate()
+
+    def _on_mode_change(self):
+        mode = self.var_mode.get()
+        if mode == "price":
+            # In price mode: Market rate is editable, Price is calculated
+            self.entry_market_rate.configure(state="normal")
+            self.entry_price.configure(state="disabled")
+            self.lbl_market_field.config(text="Annual Market Rate / Yield (YTM) *")
+            self.lbl_price_field.config(text="Present Value (Calculated)")
+        else:
+            # In yield mode: Price is editable, Market rate is calculated
+            self.entry_price.configure(state="normal")
+            self.entry_market_rate.configure(state="disabled")
+            self.lbl_price_field.config(text="Present Value (Bond Price) *")
+            self.lbl_market_field.config(text="Annual Market Rate (Calculated)")
+        self.calculate()
+
     def _build_results_area(self, parent: tk.Frame):
-        # Top: KPI summary cards (4 cards)
-        cards_frame = tk.Frame(parent, bg="#f8fafc")
+        # 1. Top Control Bar: Active Mode indicator + Decimal Precision (+ / -)
+        control_bar = tk.Frame(parent, bg=PALETTE["bg_main"])
+        control_bar.pack(fill="x", pady=(0, 8))
+
+        self.lbl_mode_status = tk.Label(
+            control_bar,
+            text="Mode: Calculate Price from Yield (PV Mode)",
+            font=self.font_bold,
+            bg=PALETTE["bg_main"],
+            fg=PALETTE["text_accent"],
+        )
+        self.lbl_mode_status.pack(side="left")
+
+        # Decimal adjustment controls
+        dec_frame = tk.Frame(control_bar, bg=PALETTE["card_bg"], bd=1, relief="solid", highlightbackground=PALETTE["card_border"], highlightthickness=1, padx=6, pady=2)
+        dec_frame.pack(side="right")
+
+        tk.Label(
+            dec_frame,
+            text="Display Precision:",
+            font=("Segoe UI", 8, "bold"),
+            bg=PALETTE["card_bg"],
+            fg=PALETTE["text_muted"],
+        ).pack(side="left", padx=(2, 6))
+
+        btn_dec_minus = tk.Button(
+            dec_frame,
+            text="  ➖ Less  ",
+            font=("Segoe UI", 8, "bold"),
+            bg=PALETTE["btn_secondary"],
+            fg=PALETTE["text_primary"],
+            activebackground=PALETTE["btn_secondary_hover"],
+            relief="flat",
+            bd=0,
+            padx=4,
+            pady=1,
+            cursor="hand2",
+            command=self.decrease_decimals,
+        )
+        btn_dec_minus.pack(side="left", padx=2)
+
+        lbl_dec = tk.Label(
+            dec_frame,
+            textvariable=self.lbl_decimals_text,
+            font=("Segoe UI", 9, "bold"),
+            bg=PALETTE["card_bg"],
+            fg=PALETTE["text_primary"],
+            width=10,
+        )
+        lbl_dec.pack(side="left", padx=4)
+
+        btn_dec_plus = tk.Button(
+            dec_frame,
+            text="  ➕ Add  ",
+            font=("Segoe UI", 8, "bold"),
+            bg=PALETTE["btn_secondary"],
+            fg=PALETTE["text_primary"],
+            activebackground=PALETTE["btn_secondary_hover"],
+            relief="flat",
+            bd=0,
+            padx=4,
+            pady=1,
+            cursor="hand2",
+            command=self.increase_decimals,
+        )
+        btn_dec_plus.pack(side="left", padx=2)
+
+        # 2. KPI summary cards (4 cards)
+        cards_frame = tk.Frame(parent, bg=PALETTE["bg_main"])
         cards_frame.pack(fill="x", pady=(0, 10))
 
-        self.kpi_price_val = tk.StringVar(value="$0.00")
-        self.kpi_price_sub = tk.StringVar(value="Present Value")
-        self.kpi_discount_val = tk.StringVar(value="$0.00")
-        self.kpi_discount_badge = tk.StringVar(value="PAR")
-        self.kpi_pct_val = tk.StringVar(value="0.00%")
-        self.kpi_coupon_val = tk.StringVar(value="$0.00")
+        self.kpi_c1_title = tk.StringVar(value="Bond Market Price")
+        self.kpi_c1_val = tk.StringVar(value="$0.00")
+        self.kpi_c1_sub = tk.StringVar(value="Present Value")
 
-        # Card 1: Bond Price
-        c1 = self._create_kpi_card(cards_frame, "Bond Market Price", self.kpi_price_val, self.kpi_price_sub, "#2563eb")
-        c1.pack(side="left", fill="both", expand=True, padx=(0, 6))
+        self.kpi_c2_title = tk.StringVar(value="Discount / Premium")
+        self.kpi_c2_val = tk.StringVar(value="$0.00")
+        self.kpi_c2_sub = tk.StringVar(value="PAR VALUE")
 
-        # Card 2: Discount Amount & Badge
-        c2 = self._create_kpi_card(
-            cards_frame, "Discount / Premium", self.kpi_discount_val, self.kpi_discount_badge, "#d97706"
-        )
+        self.kpi_c3_title = tk.StringVar(value="Annual Effective Rate (EAR)")
+        self.kpi_c3_val = tk.StringVar(value="0.00%")
+        self.kpi_c3_sub = tk.StringVar(value="Compounded Annual Yield")
+
+        self.kpi_c4_title = tk.StringVar(value="Periodic Coupon")
+        self.kpi_c4_val = tk.StringVar(value="$0.00")
+        self.kpi_c4_sub = tk.StringVar(value="Cash Paid Each Period")
+
+        c1 = self._create_kpi_card(cards_frame, self.kpi_c1_title, self.kpi_c1_val, self.kpi_c1_sub, PALETTE["kpi_bar_1"])
+        c1.pack(side="left", fill="both", expand=True, padx=(0, 5))
+
+        c2 = self._create_kpi_card(cards_frame, self.kpi_c2_title, self.kpi_c2_val, self.kpi_c2_sub, PALETTE["kpi_bar_2"])
         c2.pack(side="left", fill="both", expand=True, padx=3)
 
-        # Card 3: Discount %
-        c3 = self._create_kpi_card(
-            cards_frame, "Discount Rate (% of Par)", self.kpi_pct_val, tk.StringVar(value="Relative to Par Value"), "#059669"
-        )
+        c3 = self._create_kpi_card(cards_frame, self.kpi_c3_title, self.kpi_c3_val, self.kpi_c3_sub, PALETTE["kpi_bar_3"])
         c3.pack(side="left", fill="both", expand=True, padx=3)
 
-        # Card 4: Periodic Payment
-        c4 = self._create_kpi_card(
-            cards_frame, "Periodic Coupon", self.kpi_coupon_val, tk.StringVar(value="Cash Paid Each Period"), "#475569"
-        )
-        c4.pack(side="left", fill="both", expand=True, padx=(6, 0))
+        c4 = self._create_kpi_card(cards_frame, self.kpi_c4_title, self.kpi_c4_val, self.kpi_c4_sub, PALETTE["kpi_bar_4"])
+        c4.pack(side="left", fill="both", expand=True, padx=(5, 0))
 
-        # Bottom: Tabbed interface
+        # 3. Tabbed interface
         notebook = ttk.Notebook(parent)
         notebook.pack(fill="both", expand=True)
 
@@ -344,98 +607,130 @@ class BondCalculatorApp(tk.Tk):
         tab_schedule = ttk.Frame(notebook, style="Card.TFrame")
 
         notebook.add(tab_overview, text="  Valuation Breakdown  ")
-        notebook.add(tab_schedule, text="  Amortization Schedule  ")
+        notebook.add(tab_schedule, text="  Amortisation Schedule  ")
 
         self._build_overview_tab(tab_overview)
         self._build_schedule_tab(tab_schedule)
 
     def _create_kpi_card(
-        self, parent: tk.Frame, title: str, val_var: tk.StringVar, sub_var: tk.StringVar, accent_color: str
+        self, parent: tk.Frame, title_var: tk.StringVar, val_var: tk.StringVar, sub_var: tk.StringVar, accent_color: str
     ) -> tk.Frame:
-        card = tk.Frame(parent, bg="#ffffff", bd=1, relief="solid", padx=12, pady=10)
-        # Top colored accent bar
-        bar = tk.Frame(card, bg=accent_color, height=3)
+        card = tk.Frame(
+            parent,
+            bg=PALETTE["card_bg"],
+            bd=1,
+            relief="solid",
+            highlightbackground=PALETTE["card_border"],
+            highlightthickness=1,
+            padx=12,
+            pady=10,
+        )
+        # Top Morandi accent bar
+        bar = tk.Frame(card, bg=accent_color, height=4)
         bar.pack(fill="x", pady=(0, 6))
 
-        lbl_title = tk.Label(card, text=title, font=("Segoe UI", 8, "bold"), fg="#64748b", bg="#ffffff")
+        lbl_title = tk.Label(card, textvariable=title_var, font=("Segoe UI", 8, "bold"), fg=PALETTE["text_muted"], bg=PALETTE["card_bg"])
         lbl_title.pack(anchor="w")
 
-        lbl_val = tk.Label(card, textvariable=val_var, font=self.font_metric_val, fg="#0f172a", bg="#ffffff")
+        lbl_val = tk.Label(card, textvariable=val_var, font=self.font_metric_val, fg=PALETTE["text_primary"], bg=PALETTE["card_bg"])
         lbl_val.pack(anchor="w", pady=(2, 0))
 
-        lbl_sub = tk.Label(card, textvariable=sub_var, font=self.font_metric_sub, fg="#64748b", bg="#ffffff")
+        lbl_sub = tk.Label(card, textvariable=sub_var, font=self.font_metric_sub, fg=PALETTE["text_muted"], bg=PALETTE["card_bg"])
         lbl_sub.pack(anchor="w")
         return card
 
     def _build_overview_tab(self, parent: ttk.Frame):
-        container = tk.Frame(parent, bg="#ffffff", padx=18, pady=14)
+        container = tk.Frame(parent, bg=PALETTE["card_bg"], padx=18, pady=14)
         container.pack(fill="both", expand=True)
 
         tk.Label(
-            container, text="Component Present Value Breakdown", font=self.font_section, fg="#0f172a", bg="#ffffff"
+            container,
+            text="Component Present Value & Yield Breakdown",
+            font=self.font_section,
+            fg=PALETTE["text_primary"],
+            bg=PALETTE["card_bg"],
         ).pack(anchor="w", pady=(0, 8))
 
-        # Table-like breakdown
-        grid_frame = tk.Frame(container, bg="#f8fafc", bd=1, relief="solid", padx=14, pady=10)
-        grid_frame.pack(fill="x", pady=(0, 14))
+        # Grid table
+        grid_frame = tk.Frame(
+            container,
+            bg=PALETTE["bg_main"],
+            bd=1,
+            relief="solid",
+            highlightbackground=PALETTE["card_border"],
+            highlightthickness=1,
+            padx=14,
+            pady=10,
+        )
+        grid_frame.pack(fill="x", pady=(0, 12))
 
-        self.lbl_pv_coupons = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg="#f8fafc", fg="#0f172a")
-        self.lbl_pv_par = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg="#f8fafc", fg="#0f172a")
-        self.lbl_total_coupons = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg="#f8fafc", fg="#0f172a")
-        self.lbl_total_inflow = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg="#f8fafc", fg="#0f172a")
-        self.lbl_net_profit = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg="#f8fafc", fg="#0f172a")
-        self.lbl_periods_info = tk.Label(grid_frame, text="0 periods", font=self.font_bold, bg="#f8fafc", fg="#0f172a")
+        self.lbl_pv_coupons = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_pv_par = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_yield_nominal = tk.Label(grid_frame, text="0.00%", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_yield_effective = tk.Label(grid_frame, text="0.00%", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_periods_info = tk.Label(grid_frame, text="0 periods", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_total_coupons = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_total_inflow = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
+        self.lbl_net_profit = tk.Label(grid_frame, text="$0.00", font=self.font_bold, bg=PALETTE["bg_main"], fg=PALETTE["text_primary"])
 
         rows = [
             ("Present Value of Coupon Stream (Annuity):", self.lbl_pv_coupons),
             ("Present Value of Face Value (Lump Sum):", self.lbl_pv_par),
+            ("Nominal Market Yield to Maturity (YTM):", self.lbl_yield_nominal),
+            ("Annual Effective Rate (EAR / AER):", self.lbl_yield_effective),
             ("Compounding Periods:", self.lbl_periods_info),
             ("Total Coupon Payments Received:", self.lbl_total_coupons),
             ("Total Cash Inflow to Maturity:", self.lbl_total_inflow),
-            ("Net Investor Return / Interest Expense:", self.lbl_net_profit),
+            ("Net Investor Return / Total Interest Expense:", self.lbl_net_profit),
         ]
 
         for i, (label_text, widget) in enumerate(rows):
-            tk.Label(grid_frame, text=label_text, font=self.font_body, bg="#f8fafc", fg="#475569").grid(
+            tk.Label(grid_frame, text=label_text, font=self.font_body, bg=PALETTE["bg_main"], fg=PALETTE["text_muted"]).grid(
                 row=i, column=0, sticky="w", pady=3
             )
             widget.grid(row=i, column=1, sticky="e", padx=(20, 0), pady=3)
 
         grid_frame.columnconfigure(0, weight=1)
 
-        # Financial Explanation Card
+        # Financial Interpretation Card
         tk.Label(
-            container, text="Financial Interpretation", font=self.font_section, fg="#0f172a", bg="#ffffff"
+            container,
+            text="Financial Interpretation",
+            font=self.font_section,
+            fg=PALETTE["text_primary"],
+            bg=PALETTE["card_bg"],
         ).pack(anchor="w", pady=(0, 4))
 
         self.text_explanation = tk.Label(
             container,
             text="",
             font=self.font_body,
-            fg="#334155",
-            bg="#f1f5f9",
+            fg=PALETTE["text_primary"],
+            bg=PALETTE["bg_main"],
             bd=1,
             relief="solid",
+            highlightbackground=PALETTE["card_border"],
+            highlightthickness=1,
             justify="left",
-            wraplength=560,
+            wraplength=640,
             padx=12,
             pady=10,
         )
         self.text_explanation.pack(fill="x")
 
     def _build_schedule_tab(self, parent: ttk.Frame):
-        container = tk.Frame(parent, bg="#ffffff", padx=12, pady=10)
+        container = tk.Frame(parent, bg=PALETTE["card_bg"], padx=12, pady=10)
         container.pack(fill="both", expand=True)
 
-        top_bar = tk.Frame(container, bg="#ffffff")
+        top_bar = tk.Frame(container, bg=PALETTE["card_bg"])
         top_bar.pack(fill="x", pady=(0, 8))
 
         self.lbl_schedule_title = tk.Label(
             top_bar,
-            text="Amortization Table",
+            text="Amortisation Table",
             font=self.font_section,
-            fg="#0f172a",
-            bg="#ffffff",
+            fg=PALETTE["text_primary"],
+            bg=PALETTE["card_bg"],
         )
         self.lbl_schedule_title.pack(side="left")
 
@@ -447,7 +742,7 @@ class BondCalculatorApp(tk.Tk):
         )
         btn_export.pack(side="right")
 
-        # Treeview for table
+        # Treeview for table (British English headings)
         cols = ("period", "beg_val", "interest_exp", "coupon", "amort", "end_val", "rem_disc")
         self.tree = ttk.Treeview(container, columns=cols, show="headings", selectmode="browse")
 
@@ -455,133 +750,221 @@ class BondCalculatorApp(tk.Tk):
         self.tree.heading("beg_val", text="Beginning Value")
         self.tree.heading("interest_exp", text="Interest Expense")
         self.tree.heading("coupon", text="Coupon Cash")
-        self.tree.heading("amort", text="Amortization")
+        self.tree.heading("amort", text="Amortisation")
         self.tree.heading("end_val", text="Ending Value")
-        self.tree.heading("rem_disc", text="Unamortized Disc")
+        self.tree.heading("rem_disc", text="Unamortised Discount")
 
         self.tree.column("period", width=55, anchor="center")
-        self.tree.column("beg_val", width=105, anchor="e")
-        self.tree.column("interest_exp", width=105, anchor="e")
-        self.tree.column("coupon", width=95, anchor="e")
-        self.tree.column("amort", width=95, anchor="e")
-        self.tree.column("end_val", width=105, anchor="e")
-        self.tree.column("rem_disc", width=115, anchor="e")
+        self.tree.column("beg_val", width=110, anchor="e")
+        self.tree.column("interest_exp", width=110, anchor="e")
+        self.tree.column("coupon", width=100, anchor="e")
+        self.tree.column("amort", width=105, anchor="e")
+        self.tree.column("end_val", width=110, anchor="e")
+        self.tree.column("rem_disc", width=125, anchor="e")
 
-        # Scrollbar
         scroll_y = ttk.Scrollbar(container, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll_y.set)
 
         self.tree.pack(side="left", fill="both", expand=True)
         scroll_y.pack(side="right", fill="y")
 
-        # Tag for alternating row colors
-        self.tree.tag_configure("even", background="#f8fafc")
-        self.tree.tag_configure("odd", background="#ffffff")
+        self.tree.tag_configure("even", background=PALETTE["table_row_even"])
+        self.tree.tag_configure("odd", background=PALETTE["table_row_odd"])
+
+    def increase_decimals(self):
+        if self.current_decimals < 8:
+            self.current_decimals += 1
+            self.lbl_decimals_text.set(f"{self.current_decimals} Decimals")
+            self.update_display()
+
+    def decrease_decimals(self):
+        if self.current_decimals > 0:
+            self.current_decimals -= 1
+            self.lbl_decimals_text.set(f"{self.current_decimals} Decimals")
+            self.update_display()
 
     def calculate(self):
         try:
             face_value = float(self.var_face_value.get().replace(",", "").replace("$", "").strip())
             coupon_rate = float(self.var_coupon_rate.get().replace("%", "").strip())
-            market_rate = float(self.var_market_rate.get().replace("%", "").strip())
             years = float(self.var_years.get().strip())
             freq_str = self.var_freq.get()
             freq = FREQ_LABEL_TO_INT.get(freq_str, 2)
             method_str = self.var_method.get()
             method = METHOD_LABEL_TO_KEY.get(method_str, "effective")
 
-            res = calculate_bond(face_value, coupon_rate, market_rate, years, freq)
+            total_periods = int(round(years * freq))
+            self.var_periods_display.set(f"{total_periods} compounding periods ({years:g} yrs @ {freq}/yr)")
+
+            mode = self.var_mode.get()
+
+            if mode == "price":
+                market_rate = float(self.var_market_rate.get().replace("%", "").strip())
+                res = calculate_bond(face_value, coupon_rate, market_rate, years, freq)
+                self.var_price.set(f"{res.bond_price:.{self.current_decimals}f}")
+                self.last_yield_result = None
+            else:
+                price = float(self.var_price.get().replace(",", "").replace("$", "").strip())
+                y_res = calculate_yield(
+                    face_value=face_value,
+                    bond_price=price,
+                    annual_coupon_rate=coupon_rate,
+                    years_to_maturity=years,
+                    frequency=freq,
+                )
+                self.last_yield_result = y_res
+                market_rate = y_res.nominal_yield
+                self.var_market_rate.set(f"{market_rate:.{self.current_decimals}f}")
+                res = calculate_bond(face_value, coupon_rate, market_rate, years, freq)
+
             schedule = generate_amortization_schedule(face_value, coupon_rate, market_rate, years, freq, method)
 
             self.last_bond_result = res
             self.last_schedule = schedule
 
-            # Update KPI cards
-            self.kpi_price_val.set(f"${res.bond_price:,.2f}")
-            if res.status == "Discount":
-                self.kpi_discount_val.set(f"${res.discount_amount:,.2f}")
-                self.kpi_discount_badge.set("DISCOUNT (Below Par)")
-                self.kpi_pct_val.set(f"{res.discount_percentage:.2f}%")
-            elif res.status == "Premium":
-                self.kpi_discount_val.set(f"${abs(res.discount_amount):,.2f}")
-                self.kpi_discount_badge.set("PREMIUM (Above Par)")
-                self.kpi_pct_val.set(f"{abs(res.discount_percentage):.2f}%")
-            else:
-                self.kpi_discount_val.set("$0.00")
-                self.kpi_discount_badge.set("PAR VALUE")
-                self.kpi_pct_val.set("0.00%")
-
-            freq_desc = {1: "per year", 2: "every 6 months", 4: "every quarter", 12: "per month"}.get(freq, "")
-            self.kpi_coupon_val.set(f"${res.periodic_coupon_payment:,.2f}")
-
-            # Update Overview
-            self.lbl_pv_coupons.config(text=f"${res.pv_coupons:,.2f}")
-            self.lbl_pv_par.config(text=f"${res.pv_face_value:,.2f}")
-            self.lbl_periods_info.config(text=f"{res.total_periods} periods ({years:g} yrs @ {freq}/yr)")
-            self.lbl_total_coupons.config(text=f"${res.total_coupon_interest:,.2f}")
-            self.lbl_total_inflow.config(text=f"${res.total_cash_flows:,.2f}")
-            self.lbl_net_profit.config(text=f"${res.net_interest_expense:,.2f}")
-
-            # Explanation
-            if res.status == "Discount":
-                explanation = (
-                    f"• This bond trades at a DISCOUNT of ${res.discount_amount:,.2f} ({res.discount_percentage:.2f}%).\n"
-                    f"• Because the annual coupon rate ({coupon_rate:.2f}%) is lower than the market rate ({market_rate:.2f}%), "
-                    f"investors require a lower purchase price (${res.bond_price:,.2f}) to achieve the market yield.\n"
-                    f"• Over {years:g} years, the investor pays ${res.bond_price:,.2f} upfront and collects "
-                    f"${res.total_coupon_interest:,.2f} in coupons plus ${face_value:,.2f} at maturity, yielding a total gain of ${res.net_interest_expense:,.2f}."
-                )
-            elif res.status == "Premium":
-                explanation = (
-                    f"• This bond trades at a PREMIUM of ${abs(res.discount_amount):,.2f} ({abs(res.discount_percentage):.2f}%).\n"
-                    f"• Because the annual coupon rate ({coupon_rate:.2f}%) exceeds the market rate ({market_rate:.2f}%), "
-                    f"investors are willing to pay above par value (${res.bond_price:,.2f}) for the higher coupon payments."
-                )
-            else:
-                explanation = (
-                    f"• This bond trades exactly at PAR VALUE (${res.face_value:,.2f}).\n"
-                    f"• The coupon rate equals the market required rate of return ({market_rate:.2f}%)."
-                )
-
-            self.text_explanation.config(text=explanation)
-
-            # Update Treeview
-            for item in self.tree.get_children():
-                self.tree.delete(item)
-
-            self.lbl_schedule_title.config(
-                text=f"Amortization Table ({'Effective Interest Method' if method == 'effective' else 'Straight-Line Method'})"
-            )
-
-            for i, row in enumerate(schedule):
-                tag = "even" if i % 2 == 0 else "odd"
-                self.tree.insert(
-                    "",
-                    "end",
-                    values=(
-                        row.period,
-                        f"${row.beginning_carrying_value:,.2f}",
-                        f"${row.interest_expense:,.2f}",
-                        f"${row.coupon_payment:,.2f}",
-                        f"${row.discount_amortization:,.2f}",
-                        f"${row.ending_carrying_value:,.2f}",
-                        f"${row.remaining_discount:,.2f}",
-                    ),
-                    tags=(tag,),
-                )
+            self.update_display()
 
         except ValueError as err:
             messagebox.showerror("Input Error", f"Invalid input parameter:\n{err}")
 
+    def update_display(self):
+        res = self.last_bond_result
+        if not res:
+            return
+
+        d = self.current_decimals
+        mode = self.var_mode.get()
+        years = res.years_to_maturity
+        freq = res.frequency
+        coupon_rate = res.annual_coupon_rate
+        market_rate = res.annual_market_rate
+        method_str = self.var_method.get()
+        method_short = "Effective Interest" if "Effective" in method_str else "Straight-Line"
+
+        # Update KPI Cards
+        if mode == "price":
+            self.lbl_mode_status.config(text="Mode: Calculate Price from Yield (PV Mode)")
+            self.kpi_c1_title.set("Bond Market Price")
+            self.kpi_c1_val.set(f"${res.bond_price:,.{d}f}")
+            self.kpi_c1_sub.set("Present Value")
+
+            self.kpi_c2_title.set("Discount / Premium")
+            if res.status == "Discount":
+                self.kpi_c2_val.set(f"${res.discount_amount:,.{d}f}")
+                self.kpi_c2_sub.set(f"DISCOUNT ({res.discount_percentage:.{d}f}% of Par)")
+            elif res.status == "Premium":
+                self.kpi_c2_val.set(f"${abs(res.discount_amount):,.{d}f}")
+                self.kpi_c2_sub.set(f"PREMIUM ({abs(res.discount_percentage):.{d}f}% of Par)")
+            else:
+                self.kpi_c2_val.set(f"$0.{'0'*d}")
+                self.kpi_c2_sub.set("PAR VALUE")
+
+            self.kpi_c3_title.set("Annual Effective Rate (EAR)")
+            self.kpi_c3_val.set(f"{res.effective_annual_rate:.{d}f}%")
+            self.kpi_c3_sub.set(f"Nominal YTM: {market_rate:.{d}f}%")
+
+            self.kpi_c4_title.set("Periodic Coupon")
+            self.kpi_c4_val.set(f"${res.periodic_coupon_payment:,.{d}f}")
+            self.kpi_c4_sub.set(f"Paid {freq}x per year")
+
+        else:  # yield mode
+            self.lbl_mode_status.config(text="Mode: Solve Yield & Effective Rate from Price")
+            self.kpi_c1_title.set("Nominal Yield to Maturity (YTM)")
+            self.kpi_c1_val.set(f"{market_rate:.{d}f}%")
+            self.kpi_c1_sub.set(f"Annual Nominal Rate ({freq}x/yr)")
+
+            self.kpi_c2_title.set("Annual Effective Rate (EAR)")
+            self.kpi_c2_val.set(f"{res.effective_annual_rate:.{d}f}%")
+            self.kpi_c2_sub.set("Compounded Annual Rate")
+
+            self.kpi_c3_title.set("Discount / Premium")
+            if res.status == "Discount":
+                self.kpi_c3_val.set(f"${res.discount_amount:,.{d}f}")
+                self.kpi_c3_sub.set(f"DISCOUNT ({res.discount_percentage:.{d}f}% of Par)")
+            elif res.status == "Premium":
+                self.kpi_c3_val.set(f"${abs(res.discount_amount):,.{d}f}")
+                self.kpi_c3_sub.set(f"PREMIUM ({abs(res.discount_percentage):.{d}f}% of Par)")
+            else:
+                self.kpi_c3_val.set(f"$0.{'0'*d}")
+                self.kpi_c3_sub.set("PAR VALUE")
+
+            self.kpi_c4_title.set("Periodic Coupon")
+            self.kpi_c4_val.set(f"${res.periodic_coupon_payment:,.{d}f}")
+            self.kpi_c4_sub.set(f"Present Value: ${res.bond_price:,.{d}f}")
+
+        # Update Overview Breakdown
+        self.lbl_pv_coupons.config(text=f"${res.pv_coupons:,.{d}f}")
+        self.lbl_pv_par.config(text=f"${res.pv_face_value:,.{d}f}")
+        self.lbl_yield_nominal.config(text=f"{res.annual_market_rate:.{d}f}%")
+        self.lbl_yield_effective.config(text=f"{res.effective_annual_rate:.{d}f}%")
+        self.lbl_periods_info.config(text=f"{res.total_periods} periods ({years:g} yrs @ {freq}/yr)")
+        self.lbl_total_coupons.config(text=f"${res.total_coupon_interest:,.{d}f}")
+        self.lbl_total_inflow.config(text=f"${res.total_cash_flows:,.{d}f}")
+        self.lbl_net_profit.config(text=f"${res.net_interest_expense:,.{d}f}")
+
+        # Financial Interpretation (British English)
+        if res.status == "Discount":
+            explanation = (
+                f"• This bond trades at a DISCOUNT of ${res.discount_amount:,.{d}f} ({res.discount_percentage:.{d}f}% of par).\n"
+                f"• Because the coupon rate ({coupon_rate:.{d}f}%) is lower than the market rate ({market_rate:.{d}f}%), "
+                f"investors purchase the bond below par at ${res.bond_price:,.{d}f} to achieve the market yield.\n"
+                f"• Over {years:g} years, the investor pays ${res.bond_price:,.{d}f} upfront and receives "
+                f"${res.total_coupon_interest:,.{d}f} in coupon cash flows plus ${res.face_value:,.{d}f} at maturity, "
+                f"yielding a total net return of ${res.net_interest_expense:,.{d}f} (Effective Annual Rate: {res.effective_annual_rate:.{d}f}%)."
+            )
+        elif res.status == "Premium":
+            explanation = (
+                f"• This bond trades at a PREMIUM of ${abs(res.discount_amount):,.{d}f} ({abs(res.discount_percentage):.{d}f}% of par).\n"
+                f"• Because the annual coupon rate ({coupon_rate:.{d}f}%) exceeds the market rate ({market_rate:.{d}f}%), "
+                f"investors pay above par value (${res.bond_price:,.{d}f}) for the higher coupon payments.\n"
+                f"• The Effective Annual Rate (EAR) is {res.effective_annual_rate:.{d}f}% with nominal YTM {market_rate:.{d}f}%."
+            )
+        else:
+            explanation = (
+                f"• This bond trades exactly at PAR VALUE (${res.face_value:,.{d}f}).\n"
+                f"• The coupon rate equals the market required yield to maturity ({market_rate:.{d}f}%).\n"
+                f"• Effective Annual Rate (EAR) is {res.effective_annual_rate:.{d}f}%."
+            )
+
+        self.text_explanation.config(text=explanation)
+
+        # Update Treeview Schedule Table
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        self.lbl_schedule_title.config(text=f"Amortisation Table ({method_short})")
+
+        for i, row in enumerate(self.last_schedule):
+            tag = "even" if i % 2 == 0 else "odd"
+            self.tree.insert(
+                "",
+                "end",
+                values=(
+                    row.period,
+                    f"${row.beginning_carrying_value:,.{d}f}",
+                    f"${row.interest_expense:,.{d}f}",
+                    f"${row.coupon_payment:,.{d}f}",
+                    f"${row.discount_amortization:,.{d}f}",
+                    f"${row.ending_carrying_value:,.{d}f}",
+                    f"${row.remaining_discount:,.{d}f}",
+                ),
+                tags=(tag,),
+            )
+
     def reset_defaults(self):
+        self.var_mode.set("price")
         self.var_face_value.set("1000.00")
+        self.var_price.set("914.70")
         self.var_coupon_rate.set("4.00")
         self.var_market_rate.set("6.00")
         self.var_years.set("5.0")
         self.var_freq.set("Semi-Annual (2/year)")
-        self.var_method.set("Effective Interest Method (GAAP/IFRS)")
+        self.var_method.set("Effective Interest Method")
         self.var_zero_coupon.set(False)
+        self.current_decimals = 2
+        self.lbl_decimals_text.set("2 Decimals")
         self.entry_coupon.configure(state="normal")
-        self.calculate()
+        self._on_mode_change()
 
     def load_preset(
         self,
@@ -590,49 +973,57 @@ class BondCalculatorApp(tk.Tk):
         market: float,
         years: float,
         freq: int,
+        price: Optional[float] = None,
         zero: bool = False,
+        mode: str = "price",
     ):
-        self.var_face_value.set(f"{face:.2f}")
-        self.var_coupon_rate.set(f"{coupon:.2f}")
-        self.var_market_rate.set(f"{market:.2f}")
-        self.var_years.set(f"{years:.1f}")
+        self.var_mode.set(mode)
+        self.var_face_value.set(f"{face:.{self.current_decimals}f}")
+        self.var_coupon_rate.set(f"{coupon:.{self.current_decimals}f}")
+        self.var_market_rate.set(f"{market:.{self.current_decimals}f}")
+        self.var_years.set(f"{years:g}")
         self.var_freq.set(FREQ_INT_TO_LABEL.get(freq, "Semi-Annual (2/year)"))
         self.var_zero_coupon.set(zero)
+
+        if price is not None:
+            self.var_price.set(f"{price:.{self.current_decimals}f}")
+
         if zero:
             self.entry_coupon.configure(state="disabled")
         else:
             self.entry_coupon.configure(state="normal")
-        self.calculate()
+
+        self._on_mode_change()
 
     def export_csv(self):
         if not self.last_schedule:
-            messagebox.showinfo("Export", "No amortization schedule available to export.")
+            messagebox.showinfo("Export", "No amortisation schedule available to export.")
             return
 
         filepath = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV file (*.csv)", "*.csv"), ("All files (*.*)", "*.*")],
-            title="Export Amortization Schedule to CSV",
-            initialfile="bond_amortization_schedule.csv",
+            title="Export Amortisation Schedule to CSV",
+            initialfile="bond_amortisation_schedule.csv",
         )
         if filepath:
             try:
-                export_schedule_to_csv(self.last_schedule, filepath)
-                messagebox.showinfo("Export Successful", f"Schedule successfully saved to:\n{filepath}")
+                export_schedule_to_csv(self.last_schedule, filepath, decimals=self.current_decimals)
+                messagebox.showinfo("Export Successful", f"Amortisation schedule successfully saved to:\n{filepath}")
             except Exception as e:
                 messagebox.showerror("Export Failed", f"Could not write CSV file:\n{e}")
 
 
 # =====================================================================
-# CLI MODE
+# CLI MODE (British English)
 # =====================================================================
 
 
 def run_cli():
-    """Run bond discount calculator interactively in the terminal."""
-    print("=" * 64)
-    print("         BOND DISCOUNT CALCULATOR & AMORTIZATION (CLI)        ")
-    print("=" * 64)
+    """Run bond discount & yield calculator interactively in terminal mode."""
+    print("=" * 68)
+    print("      BOND DISCOUNT & YIELD CALCULATOR & AMORTISATION (v2.0 CLI)     ")
+    print("=" * 68)
     print("Press Enter to accept [default values] shown in brackets.\n")
 
     def prompt(msg: str, default: str) -> str:
@@ -640,19 +1031,34 @@ def run_cli():
         return val if val else default
 
     try:
+        print("Select Calculation Mode:")
+        print("  1 = Calculate Bond Price from Yield (PV Mode)")
+        print("  2 = Solve Yield & Effective Rate from Bond Price")
+        raw_mode = prompt("Select Mode (1 or 2)", "1")
+        is_yield_mode = raw_mode == "2"
+
         raw_face = prompt("Enter Face Value ($)", "1000")
         face_value = float(raw_face.replace(",", "").replace("$", ""))
+
+        if is_yield_mode:
+            raw_price = prompt("Enter Present Value / Bond Price ($)", "914.70")
+            bond_price = float(raw_price.replace(",", "").replace("$", ""))
+        else:
+            bond_price = 0.0
 
         raw_coupon = prompt("Enter Annual Coupon Rate (%)", "4.0")
         coupon_rate = float(raw_coupon.replace("%", ""))
 
-        raw_market = prompt("Enter Market Rate / YTM (%)", "6.0")
-        market_rate = float(raw_market.replace("%", ""))
+        if not is_yield_mode:
+            raw_market = prompt("Enter Market Rate / YTM (%)", "6.0")
+            market_rate = float(raw_market.replace("%", ""))
+        else:
+            market_rate = 0.0
 
         raw_years = prompt("Enter Years to Maturity", "5.0")
         years = float(raw_years)
 
-        print("\nPayment Frequencies:")
+        print("\nPayment / Compounding Frequencies:")
         print("  1 = Annual")
         print("  2 = Semi-Annual (Standard)")
         print("  4 = Quarterly")
@@ -660,82 +1066,97 @@ def run_cli():
         raw_freq = prompt("Select Frequency (1, 2, 4, 12)", "2")
         freq = int(raw_freq)
 
-        print("\nAmortization Method:")
-        print("  1 = Effective Interest Method (GAAP/IFRS)")
-        print("  2 = Straight-Line Method")
+        print("\nAmortisation Method:")
+        print("  1 = Effective Interest Method")
+        print("  2 = Straight-Line Method (prohibited by IFRS)")
         raw_method = prompt("Select Method (1 or 2)", "1")
         method = "straight_line" if raw_method == "2" else "effective"
 
-        # Calculate
-        res = calculate_bond(face_value, coupon_rate, market_rate, years, freq)
+        raw_dec = prompt("Enter Display Decimal Places (0-8)", "2")
+        d = max(0, min(8, int(raw_dec)))
+
+        # Calculations
+        if is_yield_mode:
+            y_res = calculate_yield(
+                face_value=face_value,
+                bond_price=bond_price,
+                annual_coupon_rate=coupon_rate,
+                years_to_maturity=years,
+                frequency=freq,
+            )
+            market_rate = y_res.nominal_yield
+            res = calculate_bond(face_value, coupon_rate, market_rate, years, freq)
+        else:
+            res = calculate_bond(face_value, coupon_rate, market_rate, years, freq)
+
         schedule = generate_amortization_schedule(face_value, coupon_rate, market_rate, years, freq, method)
 
-        print("\n" + "=" * 64)
+        print("\n" + "=" * 68)
         print(f"                       BOND VALUATION SUMMARY                  ")
-        print("=" * 64)
-        print(f"  Face Value (Par):             ${res.face_value:>14,.2f}")
-        print(f"  Annual Coupon Rate:            {res.annual_coupon_rate:>14.2f}%")
-        print(f"  Market Yield (YTM):            {res.annual_market_rate:>14.2f}%")
-        print(f"  Years to Maturity:             {res.years_to_maturity:>14.2f}")
-        print(f"  Payment Frequency:             {VALID_FREQUENCIES.get(res.frequency, str(res.frequency)):>14}")
-        print(f"  Total Compounding Periods:     {res.total_periods:>14}")
-        print(f"  Periodic Coupon Payment:      ${res.periodic_coupon_payment:>14,.2f}")
-        print("-" * 64)
-        print(f"  PV of Coupon Payments:        ${res.pv_coupons:>14,.2f}")
-        print(f"  PV of Par (Lump Sum):         ${res.pv_face_value:>14,.2f}")
-        print(f"  BOND MARKET PRICE:            ${res.bond_price:>14,.2f}  <<<")
-        print("-" * 64)
+        print("=" * 68)
+        print(f"  Face Value (Par):             ${res.face_value:>16,.{d}f}")
+        print(f"  Annual Coupon Rate:            {res.annual_coupon_rate:>16.{d}f}%")
+        print(f"  Nominal Yield (YTM):           {res.annual_market_rate:>16.{d}f}%")
+        print(f"  Annual Effective Rate (EAR):   {res.effective_annual_rate:>16.{d}f}%")
+        print(f"  Years to Maturity:             {res.years_to_maturity:>16.{d}f}")
+        print(f"  Compounding Frequency:         {VALID_FREQUENCIES.get(res.frequency, str(res.frequency)):>16}")
+        print(f"  Total Compounding Periods:     {res.total_periods:>16}")
+        print(f"  Periodic Coupon Payment:      ${res.periodic_coupon_payment:>16,.{d}f}")
+        print("-" * 68)
+        print(f"  PV of Coupon Payments:        ${res.pv_coupons:>16,.{d}f}")
+        print(f"  PV of Par (Lump Sum):         ${res.pv_face_value:>16,.{d}f}")
+        print(f"  BOND MARKET PRICE:            ${res.bond_price:>16,.{d}f}  <<<")
+        print("-" * 68)
         if res.status == "Discount":
-            print(f"  Status:                        {'DISCOUNT (Below Par)':>14}")
-            print(f"  Discount Amount:              ${res.discount_amount:>14,.2f}")
-            print(f"  Discount Percentage:           {res.discount_percentage:>14.2f}% of Par")
+            print(f"  Status:                        {'DISCOUNT (Below Par)':>16}")
+            print(f"  Discount Amount:              ${res.discount_amount:>16,.{d}f}")
+            print(f"  Discount Percentage:           {res.discount_percentage:>16.{d}f}% of Par")
         elif res.status == "Premium":
-            print(f"  Status:                        {'PREMIUM (Above Par)':>14}")
-            print(f"  Premium Amount:               ${abs(res.discount_amount):>14,.2f}")
-            print(f"  Premium Percentage:            {abs(res.discount_percentage):>14.2f}% of Par")
+            print(f"  Status:                        {'PREMIUM (Above Par)':>16}")
+            print(f"  Premium Amount:               ${abs(res.discount_amount):>16,.{d}f}")
+            print(f"  Premium Percentage:            {abs(res.discount_percentage):>16.{d}f}% of Par")
         else:
-            print(f"  Status:                        {'PAR VALUE':>14}")
-            print(f"  Discount / Premium:           $          0.00")
+            print(f"  Status:                        {'PAR VALUE':>16}")
+            print(f"  Discount / Premium:           ${'0':>16}")
 
-        print(f"  Total Coupon Cash Flows:      ${res.total_coupon_interest:>14,.2f}")
-        print(f"  Total Inflow at Maturity:     ${res.total_cash_flows:>14,.2f}")
-        print(f"  Net Return / Total Gain:      ${res.net_interest_expense:>14,.2f}")
-        print("=" * 64)
+        print(f"  Total Coupon Cash Flows:      ${res.total_coupon_interest:>16,.{d}f}")
+        print(f"  Total Inflow at Maturity:     ${res.total_cash_flows:>16,.{d}f}")
+        print(f"  Net Return / Total Gain:      ${res.net_interest_expense:>16,.{d}f}")
+        print("=" * 68)
 
-        # Prompt for schedule
-        show_table = input("\nPrint full amortization schedule table? (y/n) [y]: ").strip().lower()
+        show_table = input("\nPrint full amortisation schedule table? (y/n) [y]: ").strip().lower()
         if show_table != "n":
-            print("\n" + "-" * 78)
-            print(f"{'Per':>4} | {'Beg Value':>11} | {'Interest Exp':>12} | {'Coupon Paid':>11} | {'Amortization':>12} | {'End Value':>11}")
-            print("-" * 78)
+            col_w = max(11, d + 8)
+            print("\n" + "-" * 88)
+            print(f"{'Per':>4} | {'Beg Value':>{col_w}} | {'Interest Exp':>{col_w}} | {'Coupon Paid':>{col_w}} | {'Amortisation':>{col_w}} | {'End Value':>{col_w}}")
+            print("-" * 88)
             for row in schedule:
                 print(
                     f"{row.period:4d} | "
-                    f"${row.beginning_carrying_value:10,.2f} | "
-                    f"${row.interest_expense:11,.2f} | "
-                    f"${row.coupon_payment:10,.2f} | "
-                    f"${row.discount_amortization:11,.2f} | "
-                    f"${row.ending_carrying_value:10,.2f}"
+                    f"${row.beginning_carrying_value:{col_w},.{d}f} | "
+                    f"${row.interest_expense:{col_w},.{d}f} | "
+                    f"${row.coupon_payment:{col_w},.{d}f} | "
+                    f"${row.discount_amortization:{col_w},.{d}f} | "
+                    f"${row.ending_carrying_value:{col_w},.{d}f}"
                 )
-            print("-" * 78)
+            print("-" * 88)
 
-        # Export prompt
         do_export = input("\nExport schedule to CSV? (y/n) [n]: ").strip().lower()
         if do_export == "y":
-            out_file = input("Enter destination filename [bond_schedule.csv]: ").strip()
+            out_file = input("Enter destination filename [bond_amortisation_schedule.csv]: ").strip()
             if not out_file:
-                out_file = "bond_schedule.csv"
-            export_schedule_to_csv(schedule, out_file)
-            print(f"Saved amortization schedule to '{out_file}'.")
+                out_file = "bond_amortisation_schedule.csv"
+            export_schedule_to_csv(schedule, out_file, decimals=d)
+            print(f"Saved amortisation schedule to '{out_file}'.")
 
-        print("\nThank you for using Bond Discount Calculator!")
+        print("\nThank you for using Bond Discount & Yield Calculator!")
 
     except (ValueError, KeyboardInterrupt) as e:
         print(f"\nExiting: {e}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Bond Discount Calculator & Amortization Schedule")
+    parser = argparse.ArgumentParser(description="Bond Discount & Yield Calculator (v2.0)")
     parser.add_argument("--cli", action="store_true", help="Launch in interactive command-line terminal mode")
     args = parser.parse_args()
 

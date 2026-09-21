@@ -1,5 +1,5 @@
 """
-Unit tests for bond_calculator.py
+Unit tests for bond_calculator.py (v2.0)
 """
 
 import os
@@ -12,9 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bond_calculator import (
     calculate_bond,
+    calculate_yield,
     generate_amortization_schedule,
     export_schedule_to_csv,
     VALID_FREQUENCIES,
+    BondResult,
+    YieldResult,
 )
 
 
@@ -44,6 +47,8 @@ class TestBondCalculator(unittest.TestCase):
         self.assertEqual(res.total_coupon_interest, 200.0)
         self.assertEqual(res.total_cash_flows, 1200.0)
         self.assertAlmostEqual(res.net_interest_expense, 285.30, places=2)
+        # Effective annual rate: (1 + 0.03)^2 - 1 = 6.09%
+        self.assertAlmostEqual(res.effective_annual_rate, 6.09, places=2)
 
     def test_par_bond(self):
         # When coupon rate equals market rate, bond is priced at par ($1,000)
@@ -59,6 +64,7 @@ class TestBondCalculator(unittest.TestCase):
         self.assertAlmostEqual(res.bond_price, 1000.0, places=2)
         self.assertAlmostEqual(res.discount_amount, 0.0, places=2)
         self.assertAlmostEqual(res.discount_percentage, 0.0, places=2)
+        self.assertAlmostEqual(res.effective_annual_rate, ((1.025**2) - 1.0) * 100, places=3)
 
     def test_premium_bond(self):
         # When coupon rate > market rate, bond trades at a premium
@@ -105,10 +111,96 @@ class TestBondCalculator(unittest.TestCase):
         # Monthly
         res_mth = calculate_bond(1000, 6, 8, 2, frequency=12)
         self.assertEqual(res_mth.total_periods, 24)
-        self.assertAlmostEqual(res_mth.periodic_coupon_payment, 5.0, places=2)
+        self.assertEqual(res_mth.periodic_coupon_payment, 5.0)
+
+    def test_calculate_yield_discount_bond(self):
+        # Given bond price = 914.70, Face = 1000, Coupon = 4%, Years = 5, Freq = 2
+        # Solved nominal yield should be ~6.00%, effective rate ~6.09%
+        y_res = calculate_yield(
+            face_value=1000.0,
+            bond_price=914.70,
+            annual_coupon_rate=4.0,
+            years_to_maturity=5.0,
+            frequency=2,
+        )
+        self.assertAlmostEqual(y_res.nominal_yield, 6.00, places=2)
+        self.assertAlmostEqual(y_res.effective_annual_rate, 6.09, places=2)
+        self.assertAlmostEqual(y_res.periodic_yield, 0.03, places=4)
+        self.assertEqual(y_res.total_periods, 10)
+
+        # Test passing periods directly
+        y_res_p = calculate_yield(
+            face_value=1000.0,
+            bond_price=914.70,
+            annual_coupon_rate=4.0,
+            periods=10,
+            frequency=2,
+        )
+        self.assertAlmostEqual(y_res_p.nominal_yield, 6.00, places=2)
+        self.assertEqual(y_res_p.years_to_maturity, 5.0)
+
+    def test_calculate_yield_par_bond(self):
+        y_res = calculate_yield(
+            face_value=1000.0,
+            bond_price=1000.0,
+            annual_coupon_rate=5.5,
+            years_to_maturity=10.0,
+            frequency=2,
+        )
+        self.assertAlmostEqual(y_res.nominal_yield, 5.50, places=4)
+        self.assertAlmostEqual(y_res.effective_annual_rate, ((1 + 0.055 / 2) ** 2 - 1) * 100, places=3)
+
+    def test_calculate_yield_premium_bond(self):
+        # 3 years, 8% coupon, 5% market yield, annual freq
+        b_res = calculate_bond(1000.0, 8.0, 5.0, 3.0, frequency=1)
+        # Invert: pass calculated price to yield solver
+        y_res = calculate_yield(
+            face_value=1000.0,
+            bond_price=b_res.bond_price,
+            annual_coupon_rate=8.0,
+            years_to_maturity=3.0,
+            frequency=1,
+        )
+        self.assertAlmostEqual(y_res.nominal_yield, 5.0, places=4)
+        self.assertAlmostEqual(y_res.effective_annual_rate, 5.0, places=4)
+
+    def test_calculate_yield_zero_coupon(self):
+        # 2 years, 0% coupon, market rate 5% -> price ~907.03
+        y_res = calculate_yield(
+            face_value=1000.0,
+            bond_price=907.029478,
+            annual_coupon_rate=0.0,
+            years_to_maturity=2.0,
+            frequency=1,
+        )
+        self.assertAlmostEqual(y_res.nominal_yield, 5.00, places=3)
+        self.assertAlmostEqual(y_res.effective_annual_rate, 5.00, places=3)
+
+    def test_calculate_yield_multi_frequencies(self):
+        for freq in [1, 2, 4, 12]:
+            b_res = calculate_bond(1000.0, 5.0, 7.5, 4.0, frequency=freq)
+            y_res = calculate_yield(1000.0, b_res.bond_price, 5.0, years_to_maturity=4.0, frequency=freq)
+            self.assertAlmostEqual(y_res.nominal_yield, 7.5, places=3)
+
+    def test_calculate_yield_validation(self):
+        with self.assertRaises(ValueError):
+            calculate_yield(0, 950, 5, years_to_maturity=5)  # face value 0
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, 0, 5, years_to_maturity=5)  # price 0
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, -100, 5, years_to_maturity=5)  # negative price
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, 950, -1, years_to_maturity=5)  # negative coupon
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, 950, 5, years_to_maturity=-2)  # negative years
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, 950, 5, periods=0)  # periods 0
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, 950, 5)  # neither periods nor years
+        with self.assertRaises(ValueError):
+            calculate_yield(1000, 950, 5, years_to_maturity=5, frequency=5)  # invalid freq
 
     def test_effective_interest_amortization_schedule(self):
-        # 5Y, $1000, 4% coupon, 6% market rate, semi-annual
         schedule = generate_amortization_schedule(
             face_value=1000.0,
             annual_coupon_rate=4.0,
@@ -156,13 +248,14 @@ class TestBondCalculator(unittest.TestCase):
             temp_path = tf.name
 
         try:
-            export_schedule_to_csv(schedule, temp_path)
+            export_schedule_to_csv(schedule, temp_path, decimals=4)
             self.assertTrue(os.path.exists(temp_path))
             with open(temp_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 self.assertIn("Period", content)
                 self.assertIn("Beginning Carrying Value", content)
                 self.assertIn("Ending Carrying Value", content)
+                self.assertIn("Discount Amortisation", content)
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
