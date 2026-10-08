@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Bond &amp; Installment Accounts Calculator</title>
+<style>
+  :root {
+    /* Morandi palette (same values as the Tkinter GUI) */
+    --bg-main: #f4f1ea;
+    --bg-header: #4d5656;
+    --text-header: #f5f3ef;
+    --sub-header: #b8c0bc;
+    --card-bg: #fcfbf9;
+    --card-border: #dfdad2;
+    --text-primary: #2d3232;
+    --text-muted: #757c7c;
+    --text-accent: #5b6b64;
+    --btn-primary: #6c8276;
+    --btn-primary-hover: #5a6f64;
+    --btn-secondary: #ded8ce;
+    --btn-secondary-hover: #d0c9bd;
+    --btn-preset: #ede8e0;
+    --btn-preset-hover: #dfd9cf;
+    --kpi-1: #687d8c;
+    --kpi-2: #b37b67;
+    --kpi-3: #7d8c70;
+    --kpi-4: #8c747a;
+    --table-head: #eae5dc;
+    --table-even: #f8f6f1;
+    --table-odd: #ffffff;
+    --table-hover: #e3ebe7;
+    --error-bg: #f6e7e2;
+    --error-border: #b37b67;
+    --focus: #4d6f80;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    font: 14px/1.45 "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* Header */
+  .app-header { background: var(--bg-header); padding: 14px 22px 12px; }
+  .app-header .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .app-header h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-header); }
+  .badge { background: var(--kpi-1); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 3px; }
+  .app-header p { margin: 4px 0 0; color: var(--sub-header); font-size: 12.5px; }
+
+  /* Layout */
+  .layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; padding: 14px 16px 24px; max-width: 1400px; margin: 0 auto; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 4px; }
+
+  /* Inputs panel */
+  .inputs { padding: 14px 16px 16px; }
+  .inputs h2 { margin: 0 0 6px; font-size: 15px; }
+  .mode-box { background: var(--bg-main); border: 1px solid var(--card-border); padding: 7px 10px; margin-bottom: 10px; }
+  .mode-box label { display: flex; align-items: center; gap: 8px; padding: 2px 0; cursor: pointer; }
+  .field { margin: 8px 0; }
+  .field > label, .field > .lbl { display: block; font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  .control { display: flex; align-items: center; background: #fff; border: 1px solid #cfc9be; border-radius: 3px; }
+  .control:focus-within { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+  .control input, .select { width: 100%; border: 0; background: transparent; padding: 6px 8px; min-width: 0; }
+  .control input:focus-visible { outline: none; }
+  .control .unit { color: var(--text-muted); padding: 0 9px; font-size: 13px; white-space: nowrap; }
+  .control.is-output { background: #ece8df; }
+  .control.is-output input { color: var(--text-accent); font-weight: 600; cursor: default; }
+  .select { background: #fff; border: 1px solid #cfc9be; border-radius: 3px; }
+  .note { color: var(--text-accent); font-size: 12px; margin: 2px 0 0; min-height: 17px; }
+  .check { display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; cursor: pointer; }
+
+  .btn { border: 0; border-radius: 3px; cursor: pointer; padding: 8px 12px; font-weight: 600; transition: background .12s; }
+  .btn-primary { background: var(--btn-primary); color: #fff; width: 100%; font-size: 15px; padding: 9px 12px; }
+  .btn-primary:hover { background: var(--btn-primary-hover); }
+  .btn-secondary { background: var(--btn-secondary); color: var(--text-primary); }
+  .btn-secondary:hover { background: var(--btn-secondary-hover); }
+  .btn-block { width: 100%; }
+  .actions { display: grid; gap: 6px; margin: 12px 0 10px; }
+  .presets-title { margin: 8px 0 4px; font-weight: 700; font-size: 12.5px; color: var(--text-muted); }
+  .preset { display: block; width: 100%; text-align: left; background: var(--btn-preset); border: 1px solid var(--card-border); border-radius: 3px; padding: 5px 9px; margin-bottom: 4px; font-size: 12.5px; cursor: pointer; }
+  .preset:hover { background: var(--btn-preset-hover); }
+
+  /* Results */
+  .control-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  #mode-status { font-weight: 700; color: var(--text-accent); }
+  .precision { display: flex; align-items: center; gap: 6px; padding: 3px 8px; }
+  .precision .t { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+  .precision .btn { padding: 3px 9px; font-size: 12px; background: var(--btn-secondary); }
+  .precision .btn:hover:not(:disabled) { background: var(--btn-secondary-hover); }
+  .precision .btn:disabled { opacity: .45; cursor: not-allowed; }
+  #decimals-label { min-width: 84px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .error { background: var(--error-bg); border: 1px solid var(--error-border); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; }
+  .error[hidden] { display: none; }
+  .error strong { color: #8a4b39; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .kpi { padding: 0 12px 10px; border-top: 4px solid var(--accent, var(--kpi-1)); }
+  .kpi .t { margin-top: 8px; font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+  .kpi .v { font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .kpi .s { font-size: 12px; color: var(--text-muted); }
+
+  .tabs { padding: 0; overflow: hidden; }
+  .tablist { display: flex; background: var(--bg-main); border-bottom: 1px solid var(--card-border); }
+  .tab { border: 0; background: transparent; padding: 9px 18px; font-weight: 700; cursor: pointer; color: var(--text-muted); border-bottom: 3px solid transparent; }
+  .tab[aria-selected="true"] { color: var(--text-primary); background: var(--card-bg); border-bottom-color: var(--btn-primary); }
+  .panel { padding: 14px 18px 18px; }
+  .panel[hidden] { display: none; }
+  .panel h3 { margin: 0 0 8px; font-size: 15px; }
+
+  dl.breakdown { margin: 0 0 14px; padding: 10px 14px; background: var(--bg-main); border: 1px solid var(--card-border); display: grid; grid-template-columns: 1fr auto; row-gap: 5px; column-gap: 20px; }
+  dl.breakdown dt { color: var(--text-muted); }
+  dl.breakdown dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) {
+    dl.breakdown { grid-template-columns: 1fr; row-gap: 0; }
+    dl.breakdown dd { text-align: left; margin-bottom: 8px; }
+  }
+  #explanation { margin: 0; padding: 10px 14px 10px 30px; background: var(--bg-main); border: 1px solid var(--card-border); }
+  #explanation li { margin: 3px 0; }
+
+  .sched-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .sched-top h3 { margin: 0; }
+  .table-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--card-border); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 5px 10px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: center; }
+  thead th { position: sticky; top: 0; background: var(--table-head); font-size: 12px; z-index: 1; }
+  tbody tr:nth-child(odd) { background: var(--table-odd); }
+  tbody tr:nth-child(even) { background: var(--table-even); }
+  tbody tr:hover { background: var(--table-hover); }
+
+  .busy { opacity: .6; transition: opacity .15s; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <div class="row">
+    <h1>Bond &amp; Installment Accounts Calculator</h1>
+    <span class="badge">v2.0.1 · HTML</span>
+  </div>
+  <p>Value long-term payables / receivables with live yield solving and amortisation.</p>
+</header>
+
+<main class="layout">
+  <!-- ============ INPUTS ============ -->
+  <form class="card inputs" id="form" autocomplete="off" novalidate>
+    <h2>Calculation Mode</h2>
+    <div class="mode-box" role="radiogroup" aria-label="Calculation mode">
+      <label><input type="radio" name="mode" value="price" checked> Calculate Price from Yield (PV Mode)</label>
+      <label><input type="radio" name="mode" value="yield"> Solve Yield &amp; Effective Rate from Price</label>
+    </div>
+
+    <div class="field">
+      <label for="instrument">Instrument Type</label>
+      <select class="select" id="instrument">
+        <option value="term">Term Bond (Lump-Sum at Maturity)</option>
+        <option value="serial_equal_principal">Serial Bond (Equal Principal Installments)</option>
+        <option value="serial_equal_payment">Installment Note (Equal Total Installments)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="face">Face Value / Note Principal</label>
+      <div class="control"><input id="face" inputmode="decimal" value="1000.00"><span class="unit">$</span></div>
+    </div>
+    <div class="field">
+      <label for="price" id="price-label">Present Value (Calculated)</label>
+      <div class="control" id="price-ctl"><input id="price" inputmode="decimal" value="914.70"><span class="unit">$</span></div>
+    </div>
+    <div class="field">
+      <label for="coupon">Annual Coupon / Stated Rate</label>
+      <div class="control" id="coupon-ctl"><input id="coupon" inputmode="decimal" value="4.00"><span class="unit">%</span></div>
+    </div>
+    <div class="field">
+      <label for="market" id="market-label">Annual Market Rate / Yield (YTM) *</label>
+      <div class="control" id="market-ctl"><input id="market" inputmode="decimal" value="6.00"><span class="unit">%</span></div>
+    </div>
+    <div class="field">
+      <label for="years">Years to Maturity / Term</label>
+      <div class="control"><input id="years" inputmode="decimal" value="5.0"><span class="unit">Years</span></div>
+      <p class="note" id="periods-note">10 compounding periods (5 yrs @ 2/yr)</p>
+    </div>
+
+    <label class="check"><input type="checkbox" id="zero"> Non-Interest-Bearing / Zero-Coupon</label>
+
+    <div class="field">
+      <label for="freq">Payment Frequency</label>
+      <select class="select" id="freq">
+        <option value="2" selected>Semi-Annual (2/year)</option>
+        <option value="1">Annual (1/year)</option>
+        <option value="4">Quarterly (4/year)</option>
+        <option value="12">Monthly (12/year)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="method">Amortisation Method</label>
+      <select class="select" id="method">
+        <option value="effective" selected>Effective Interest Method</option>
+        <option value="straight_line">Straight-Line Method (prohibited by IFRS)</option>
+      </select>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Calculate</button>
+      <button class="btn btn-secondary btn-block" type="button" id="reset">Reset Defaults</button>
+    </div>
+
+    <div class="presets-title">Presets &amp; Examples</div>
+    <button class="preset" type="button" data-preset="term">Term Bond: 5Y (4% vs 6%)</button>
+    <button class="preset" type="button" data-preset="serial">Serial Bond: $100k, 5Y (4% vs 6%)</button>
+    <button class="preset" type="button" data-preset="note0">Installment Note: $30k @ 6% (0% Note)</button>
+    <button class="preset" type="button" data-preset="notepar">Installment Note: $50k @ 5% Par</button>
+    <button class="preset" type="button" data-preset="yield">Yield Solver: $914.70 -&gt; 6% YTM</button>
+  </form>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="results" id="results" aria-label="Results">
+    <div class="control-bar">
+      <span id="mode-status">Mode: Calculate Price from Yield (PV Mode)</span>
+      <div class="card precision" role="group" aria-label="Display precision">
+        <span class="t">Display Precision:</span>
+        <button class="btn" type="button" id="dec-less" aria-label="Show fewer decimal places">➖ Less</button>
+        <span id="decimals-label" aria-live="polite">2 Decimals</span>
+        <button class="btn" type="button" id="dec-more" aria-label="Show more decimal places">➕ Add</button>
+      </div>
+    </div>
+
+    <div class="error" id="error" role="alert" hidden><strong>Input error:</strong> <span id="error-text"></span></div>
+
+    <div class="kpis">
+      <div class="card kpi" style="--accent: var(--kpi-1)"><div class="t" id="k1t"></div><div class="v" id="k1v">–</div><div class="s" id="k1s"></div></div>
+      <div class="card kpi" style="--accent: var(--kpi-2)"><div class="t" id="k2t"></div><div class="v" id="k2v">–</div><div class="s" id="k2s"></div></div>
+      <div class="card kpi" style="--accent: var(--kpi-3)"><div class="t" id="k3t"></div><div class="v" id="k3v">–</div><div class="s" id="k3s"></div></div>
+      <div class="card kpi" style="--accent: var(--kpi-4)"><div class="t" id="k4t"></div><div class="v" id="k4v">–</div><div class="s" id="k4s"></div></div>
+    </div>
+
+    <div class="card tabs">
+      <div class="tablist" role="tablist" aria-label="Result views">
+        <button class="tab" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Valuation Breakdown</button>
+        <button class="tab" role="tab" id="tab-schedule" aria-controls="panel-schedule" aria-selected="false" tabindex="-1">Amortisation Schedule</button>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
+        <h3>Component Present Value &amp; Yield Breakdown</h3>
+        <dl class="breakdown">
+          <dt>Debt / Instrument Classification:</dt><dd id="b-inst"></dd>
+          <dt>Present Value of Interest / Annuity Stream:</dt><dd id="b-pvc"></dd>
+          <dt>Present Value of Principal Stream:</dt><dd id="b-pvp"></dd>
+          <dt>Nominal Market Yield to Maturity (YTM):</dt><dd id="b-ytm"></dd>
+          <dt>Annual Effective Rate (EAR / AER):</dt><dd id="b-ear"></dd>
+          <dt>Compounding Periods:</dt><dd id="b-per"></dd>
+          <dt>Total Interest Paid / Received over Life:</dt><dd id="b-int"></dd>
+          <dt>Total Cash Outflow / Inflow to Maturity:</dt><dd id="b-cash"></dd>
+          <dt>Net Interest Expense / Return:</dt><dd id="b-net"></dd>
+        </dl>
+        <h3>Financial Interpretation</h3>
+        <ul id="explanation"></ul>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-schedule" aria-labelledby="tab-schedule" hidden>
+        <div class="sched-top">
+          <h3 id="sched-title">Amortisation Table</h3>
+          <button class="btn btn-secondary" type="button" id="export">📥 Export to CSV</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <caption class="sr-only">Amortisation schedule</caption>
+            <thead><tr>
+              <th scope="col">Period</th><th scope="col">Beg Carrying Amount</th><th scope="col">Interest Expense</th>
+              <th scope="col">Coupon / Int</th><th scope="col">Principal Repaid</th><th scope="col">Total Cash Paid</th>
+              <th scope="col">Discount Amort.</th><th scope="col">End Carrying Amount</th>
+            </tr></thead>
+            <tbody id="sched-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const INSTRUMENT_LABEL = {
+    term: 'Term Bond (Lump-Sum at Maturity)',
+    serial_equal_principal: 'Serial Bond (Equal Principal Installments)',
+    serial_equal_payment: 'Installment Note (Equal Total Installments)',
+  };
+  const DEFAULTS = { mode: 'price', instrument: 'term', face: '1000.00', price: '914.70', coupon: '4.00',
+                     market: '6.00', years: '5.0', freq: '2', method: 'effective', zero: false };
+
+  const $ = (id) => document.getElementById(id);
+  const f = {
+    face: $('face'), price: $('price'), coupon: $('coupon'), market: $('market'), years: $('years'),
+    instrument: $('instrument'), freq: $('freq'), method: $('method'), zero: $('zero'),
+  };
+  const modeRadios = document.querySelectorAll('input[name="mode"]');
+
+  let decimals = 2;
+  let last = null;          // last successful result
+  let lastPayload = null;   // inputs that produced `last`
+  let savedCoupon = null;
+  let timer = null;
+
+  /* ---------- number formatting (matches Python's f"{x:,.{d}f}", incl. half-to-even ties) ---------- */
+  function fixed(x, d) {
+    if (!Number.isFinite(x)) return String(x);
+    const a = Math.abs(x);
+    let s = a.toFixed(d);                              // JS rounds exact ties up
+    const ext = a.toFixed(Math.min(100, d + 30));      // exact decimal expansion
+    if (/^50*$/.test(ext.slice(ext.length - 30))) {    // exact tie -> Python rounds to even
+      const down = ext.slice(0, ext.length - 30).replace(/\.$/, '');
+      if (Number(down.replace('.', '').slice(-1)) % 2 === 0) s = down;
+    }
+    return (x < 0 && /[1-9]/.test(s) ? '-' : '') + s;
+  }
+  function group(s) {
+    const neg = s.startsWith('-');
+    const [i, frac] = (neg ? s.slice(1) : s).split('.');
+    return (neg ? '-' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac !== undefined ? '.' + frac : '');
+  }
+  const money = (x, d = decimals) => { const s = group(fixed(x, d)); return s.startsWith('-') ? '-$' + s.slice(1) : '$' + s; };
+  const pct = (x, d = decimals) => fixed(x, d) + '%';
+  const yearsText = (y) => String(Number(Number(y).toPrecision(6)));   // like Python's :g
+
+  /* ===== calculator core START: port of bond_calculator.py (parity-checked by test_index_parity.py) ===== */
+  class InputError extends Error {}
+  const VALID_FREQUENCIES = [1, 2, 4, 12];
+  const VALID_INSTRUMENTS = ['term', 'serial_equal_principal', 'serial_equal_payment'];
+  const VALID_METHODS = ['effective', 'straight_line'];
+  const MAX_PERIODS = 1200;      // 100 years of monthly payments; keeps the schedule responsive
+
+  // Python's round(): exact halves go to the even neighbour (JS Math.round would round them up)
+  function pyRound(x) {
+    const lo = Math.floor(x), diff = x - lo;
+    if (diff < 0.5) return lo;
+    if (diff > 0.5) return lo + 1;
+    return lo % 2 === 0 ? lo : lo + 1;
+  }
+
+  function checkFrequencyAndInstrument(frequency, instrument_type) {
+    if (!VALID_FREQUENCIES.includes(frequency)) throw new InputError(`Frequency must be one of [${VALID_FREQUENCIES.join(', ')}] (got ${frequency}).`);
+    if (!VALID_INSTRUMENTS.includes(instrument_type)) throw new InputError(`Instrument type must be one of [${VALID_INSTRUMENTS.join(', ')}] (got ${instrument_type}).`);
+  }
+
+  function calculateBond(face_value, annual_coupon_rate, annual_market_rate, years_to_maturity, frequency, instrument_type) {
+    if (face_value <= 0) throw new InputError('Face value (par value) must be greater than 0.');
+    if (annual_coupon_rate < 0) throw new InputError('Annual coupon rate cannot be negative.');
+    if (annual_market_rate < 0) throw new InputError('Annual market rate cannot be negative.');
+    if (years_to_maturity <= 0) throw new InputError('Years to maturity must be greater than 0.');
+    checkFrequencyAndInstrument(frequency, instrument_type);
+
+    const total_periods = pyRound(years_to_maturity * frequency);
+    if (total_periods < 1) throw new InputError('Total compounding periods must be at least 1.');
+
+    const c = annual_coupon_rate / 100.0;
+    const r = annual_market_rate / 100.0;
+    const periodic_market_rate = r / frequency;
+    let periodic_coupon, periodic_principal_payment, periodic_total_payment;
+    let pv_coupons, pv_face_value, bond_price, total_coupon_interest, total_cash_flows;
+
+    if (instrument_type === 'serial_equal_principal') {
+      const p_prin = face_value / total_periods;
+      periodic_coupon = face_value * (c / frequency);
+      periodic_principal_payment = p_prin;
+      periodic_total_payment = p_prin + periodic_coupon;
+      pv_coupons = 0.0; pv_face_value = 0.0; total_coupon_interest = 0.0;
+      for (let t = 1; t <= total_periods; t++) {
+        const f_beg = face_value - (t - 1) * p_prin;
+        const coupon_t = f_beg * (c / frequency);
+        total_coupon_interest += coupon_t;
+        const df = periodic_market_rate === 0 ? 1.0 : Math.pow(1.0 + periodic_market_rate, -t);
+        pv_face_value += p_prin * df;
+        pv_coupons += coupon_t * df;
+      }
+      bond_price = pv_coupons + pv_face_value;
+      total_cash_flows = face_value + total_coupon_interest;
+    } else if (instrument_type === 'serial_equal_payment') {
+      let pmt;
+      if (c > 0) {
+        const rate_c = c / frequency;
+        pmt = face_value * rate_c / (1.0 - Math.pow(1.0 + rate_c, -total_periods));
+      } else {
+        pmt = face_value / total_periods;
+      }
+      periodic_principal_payment = pmt;
+      periodic_total_payment = pmt;
+      periodic_coupon = c > 0 ? pmt - (face_value / total_periods) : 0.0;
+      bond_price = periodic_market_rate === 0
+        ? pmt * total_periods
+        : pmt * (1.0 - Math.pow(1.0 + periodic_market_rate, -total_periods)) / periodic_market_rate;
+      total_cash_flows = pmt * total_periods;
+      total_coupon_interest = Math.max(0.0, total_cash_flows - face_value);
+      pv_face_value = Math.min(face_value, bond_price);
+      pv_coupons = Math.max(0.0, bond_price - pv_face_value);
+    } else {  // term bond
+      periodic_coupon = face_value * (c / frequency);
+      periodic_principal_payment = face_value;
+      periodic_total_payment = periodic_coupon;
+      if (periodic_market_rate === 0) {
+        pv_face_value = face_value;
+        pv_coupons = periodic_coupon * total_periods;
+      } else {
+        pv_face_value = face_value / Math.pow(1.0 + periodic_market_rate, total_periods);
+        pv_coupons = periodic_coupon === 0 ? 0.0
+          : periodic_coupon * (1.0 - Math.pow(1.0 + periodic_market_rate, -total_periods)) / periodic_market_rate;
+      }
+      bond_price = pv_coupons + pv_face_value;
+      total_coupon_interest = periodic_coupon * total_periods;
+      total_cash_flows = total_coupon_interest + face_value;
+    }
+
+    let discount_amount = face_value - bond_price;
+    let discount_percentage = (discount_amount / face_value) * 100.0;
+    let status;
+    if (Math.abs(discount_amount) < 0.005) { status = 'Par'; discount_amount = 0.0; discount_percentage = 0.0; }
+    else if (discount_amount > 0) status = 'Discount';
+    else status = 'Premium';
+
+    return {
+      face_value, annual_coupon_rate, annual_market_rate, years_to_maturity, frequency, total_periods,
+      periodic_coupon_payment: periodic_coupon, periodic_market_rate, pv_coupons, pv_face_value, bond_price,
+      discount_amount, discount_percentage, status, total_coupon_interest, total_cash_flows,
+      net_interest_expense: total_cash_flows - bond_price,
+      effective_annual_rate: (Math.pow(1.0 + periodic_market_rate, frequency) - 1.0) * 100.0,
+      instrument_type, periodic_principal_payment, periodic_total_payment,
+    };
+  }
+
+  // Newton-Raphson with a bisection safeguard, exactly as in calculate_yield()
+  function calculateYield(face_value, bond_price, annual_coupon_rate, years_to_maturity, frequency, instrument_type) {
+    const tolerance = 1e-9, max_iterations = 100;
+    if (face_value <= 0) throw new InputError('Face value (par value) must be greater than 0.');
+    if (bond_price <= 0) throw new InputError('Bond price (present value) must be greater than 0.');
+    if (annual_coupon_rate < 0) throw new InputError('Annual coupon rate cannot be negative.');
+    checkFrequencyAndInstrument(frequency, instrument_type);
+    if (years_to_maturity <= 0) throw new InputError('Years to maturity must be greater than 0.');
+    const total_periods = pyRound(years_to_maturity * frequency);
+    if (total_periods < 1) throw new InputError('Total compounding periods must be at least 1.');
+    const years = years_to_maturity;
+    const c = (annual_coupon_rate / 100.0) / frequency;
+
+    const cash_flows = [];
+    if (instrument_type === 'serial_equal_principal') {
+      const p_prin = face_value / total_periods;
+      for (let t = 1; t <= total_periods; t++) cash_flows.push(p_prin + (face_value - (t - 1) * p_prin) * c);
+    } else if (instrument_type === 'serial_equal_payment') {
+      const pmt = c > 0 ? face_value * c / (1.0 - Math.pow(1.0 + c, -total_periods)) : face_value / total_periods;
+      for (let t = 0; t < total_periods; t++) cash_flows.push(pmt);
+    } else {
+      const periodic_coupon = face_value * c;
+      for (let t = 1; t < total_periods; t++) cash_flows.push(periodic_coupon);
+      cash_flows.push(periodic_coupon + face_value);
+    }
+
+    if (Math.abs(bond_price - face_value) < 1e-7 && annual_coupon_rate > 0) {   // par check
+      return { nominal_yield: annual_coupon_rate, effective_annual_rate: (Math.pow(1.0 + c, frequency) - 1.0) * 100.0,
+               periodic_yield: c, total_periods, years_to_maturity: years, iterations: 1 };
+    }
+
+    const price_func = (rate) => {
+      if (Math.abs(rate) < 1e-12) return cash_flows.reduce((a, b) => a + b, 0);
+      let pv = 0.0;
+      cash_flows.forEach((cf, k) => { pv += cf * Math.pow(1.0 + rate, -(k + 1)); });
+      return pv;
+    };
+    const price_derivative = (rate) => {
+      const factor = 1.0 + rate;
+      let deriv = 0.0;
+      cash_flows.forEach((cf, k) => { const t = k + 1; deriv -= t * cf * Math.pow(factor, -(t + 1)); });
+      return deriv;
+    };
+
+    const total_cf = cash_flows.reduce((a, b) => a + b, 0);
+    const total_interest = total_cf - face_value;
+    const avg_annual_int = years > 0 ? total_interest / years : 0.0;
+    const approx_yield = (avg_annual_int + (face_value - bond_price) / years) / ((face_value + bond_price) / 2.0);
+    let initial_guess = approx_yield / frequency;
+    if (initial_guess <= -0.9 || initial_guess > 5.0) initial_guess = 0.05 / frequency;
+
+    let low = -0.999;
+    let high = Math.max(1.0, initial_guess * 2.0);
+    while (price_func(high) > bond_price) high = high * 2.0 + 1.0;
+
+    let current_i = initial_guess, iterations = 0;
+    for (let it = 1; it <= max_iterations; it++) {
+      iterations = it;
+      const f_val = price_func(current_i) - bond_price;
+      if (Math.abs(f_val) < tolerance) break;
+      const f_prime = price_derivative(current_i);
+      let next_i = f_prime !== 0 ? current_i - f_val / f_prime : (low + high) / 2.0;
+      if (!(low < next_i && next_i < high)) next_i = (low + high) / 2.0;
+      if (price_func(next_i) - bond_price > 0) low = next_i; else high = next_i;
+      if (Math.abs(next_i - current_i) < tolerance) { current_i = next_i; break; }
+      current_i = next_i;
+    }
+    return { nominal_yield: current_i * frequency * 100.0, effective_annual_rate: (Math.pow(1.0 + current_i, frequency) - 1.0) * 100.0,
+             periodic_yield: current_i, total_periods, years_to_maturity: years, iterations };
+  }
+
+  function generateAmortizationSchedule(face_value, annual_coupon_rate, annual_market_rate, years_to_maturity, frequency, method, instrument_type) {
+    const bond = calculateBond(face_value, annual_coupon_rate, annual_market_rate, years_to_maturity, frequency, instrument_type);
+    const schedule = [];
+    const carrying_value = bond.bond_price;
+    const total_periods = bond.total_periods;
+    const periodic_rate = bond.periodic_market_rate;
+    const total_discount = bond.discount_amount;
+    const keepDiscount = (x) => (bond.status !== 'Premium' ? Math.max(0.0, x) : x);
+    const push = (o) => schedule.push(o);
+
+    if (instrument_type === 'serial_equal_principal') {
+      const p_prin = face_value / total_periods;
+      const periodic_amort_sl = total_periods > 0 ? total_discount / total_periods : 0.0;
+      let running = carrying_value;
+      for (let period = 1; period <= total_periods; period++) {
+        const beginning_val = running;
+        const f_beg = face_value - (period - 1) * p_prin;
+        const f_end = face_value - period * p_prin;
+        const coupon_t = f_beg * (bond.annual_coupon_rate / 100.0 / frequency);
+        const principal_t = p_prin;
+        const total_cash_t = principal_t + coupon_t;
+        const last = period === total_periods;
+        let ending_val, interest_expense, amort;
+        if (method === 'straight_line') {
+          if (last) { ending_val = 0.0; amort = -(beginning_val - principal_t); interest_expense = coupon_t + amort; }
+          else { amort = periodic_amort_sl; interest_expense = coupon_t + amort; ending_val = beginning_val + amort - principal_t; }
+        } else if (last) {
+          ending_val = 0.0; interest_expense = total_cash_t - beginning_val; amort = interest_expense - coupon_t;
+        } else {
+          interest_expense = beginning_val * periodic_rate; amort = interest_expense - coupon_t; ending_val = beginning_val + amort - principal_t;
+        }
+        let remaining_discount = f_end - ending_val;
+        if (Math.abs(remaining_discount) < 1e-9) remaining_discount = 0.0;
+        if (Math.abs(ending_val) < 1e-9) ending_val = 0.0;
+        running = ending_val;
+        push({ period, beginning_carrying_amount: beginning_val, interest_expense, coupon_payment: coupon_t, discount_amortization: amort,
+               ending_carrying_amount: ending_val, remaining_discount: keepDiscount(remaining_discount), principal_repayment: principal_t,
+               total_cash_payment: total_cash_t, outstanding_face_value: f_end });
+      }
+    } else if (instrument_type === 'serial_equal_payment') {
+      const pmt = bond.periodic_total_payment;
+      let running = carrying_value;
+      for (let period = 1; period <= total_periods; period++) {
+        const beginning_val = running;
+        let ending_val, principal_t, interest_expense, coupon_t, amort, remaining_discount;
+        if (period === total_periods) {
+          ending_val = 0.0; principal_t = beginning_val; interest_expense = pmt - principal_t;
+          coupon_t = interest_expense; amort = interest_expense; remaining_discount = 0.0;
+        } else {
+          interest_expense = beginning_val * periodic_rate; principal_t = pmt - interest_expense; ending_val = beginning_val - principal_t;
+          coupon_t = interest_expense; amort = interest_expense; remaining_discount = Math.max(0.0, ending_val);
+        }
+        if (Math.abs(ending_val) < 1e-9) ending_val = 0.0;
+        running = ending_val;
+        push({ period, beginning_carrying_amount: beginning_val, interest_expense, coupon_payment: coupon_t, discount_amortization: amort,
+               ending_carrying_amount: ending_val, remaining_discount, principal_repayment: principal_t,
+               total_cash_payment: pmt, outstanding_face_value: ending_val });
+      }
+    } else {  // term bond
+      const periodic_coupon = bond.periodic_coupon_payment;
+      const periodic_amortization = total_periods > 0 ? total_discount / total_periods : 0.0;
+      let running = carrying_value;
+      for (let period = 1; period <= total_periods; period++) {
+        const beginning_val = running;
+        const last = period === total_periods;
+        let amort, ending_val, interest_expense, principal_t, total_cash_t;
+        if (method === 'straight_line') {
+          if (last) { amort = face_value - beginning_val; ending_val = face_value; principal_t = face_value; total_cash_t = periodic_coupon + face_value; }
+          else { amort = periodic_amortization; ending_val = beginning_val + amort; principal_t = 0.0; total_cash_t = periodic_coupon; }
+          interest_expense = periodic_coupon + amort;
+        } else if (last) {
+          amort = face_value - beginning_val; interest_expense = periodic_coupon + amort; ending_val = face_value;
+          principal_t = face_value; total_cash_t = periodic_coupon + face_value;
+        } else {
+          interest_expense = beginning_val * periodic_rate; amort = interest_expense - periodic_coupon; ending_val = beginning_val + amort;
+          principal_t = 0.0; total_cash_t = periodic_coupon;
+        }
+        let remaining_discount = face_value - ending_val;
+        if (Math.abs(remaining_discount) < 1e-9) remaining_discount = 0.0;
+        running = ending_val;
+        push({ period, beginning_carrying_amount: beginning_val, interest_expense, coupon_payment: periodic_coupon, discount_amortization: amort,
+               ending_carrying_amount: ending_val, remaining_discount: keepDiscount(remaining_discount), principal_repayment: principal_t,
+               total_cash_payment: total_cash_t, outstanding_face_value: face_value });
+      }
+    }
+    return schedule;
+  }
+
+  // Same columns and CRLF line endings as export_schedule_to_csv()
+  function scheduleToCsv(schedule, decimals) {
+    const d = Math.max(0, Math.min(8, Math.trunc(decimals)));
+    const header = ['Period', 'Beginning Carrying Amount', 'Interest Expense', 'Coupon Payment', 'Principal Repaid',
+                    'Total Payment', 'Discount Amortisation', 'Ending Carrying Amount', 'Remaining Unamortised Discount'];
+    const lines = [header.join(',')];
+    schedule.forEach((r) => lines.push([String(r.period)].concat([
+      r.beginning_carrying_amount, r.interest_expense, r.coupon_payment, r.principal_repayment, r.total_cash_payment,
+      r.discount_amortization, r.ending_carrying_amount, r.remaining_discount].map((v) => fixed(v, d))).join(',')));
+    return lines.join('\r\n') + '\r\n';
+  }
+
+  // Accepts "$1,000.00", "6 %", 5 ... and rejects everything else (hex, NaN, Infinity, blanks)
+  function parseNumber(raw, label) {
+    if (raw === null || raw === undefined || typeof raw === 'boolean') throw new InputError(`${label} is required.`);
+    let v = raw;
+    if (typeof raw === 'string') {
+      const t = raw.replace(/[,$%]/g, '').trim();
+      if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) throw new InputError(`${label} must be a number (got '${raw}').`);
+      v = Number(t);
+    }
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw new InputError(`${label} must be a finite number.`);
+    return v;
+  }
+
+  // Same pipeline as the desktop app's calculate(): price mode or yield mode, then bond + schedule
+  function compute(p) {
+    const mode = p.mode === undefined ? 'price' : p.mode;
+    if (mode !== 'price' && mode !== 'yield') throw new InputError('Mode must be one of [price, yield].');
+    const instrument = p.instrument === undefined ? 'term' : p.instrument;
+    if (!VALID_INSTRUMENTS.includes(instrument)) throw new InputError(`Instrument must be one of [${VALID_INSTRUMENTS.join(', ')}].`);
+    const method = p.method === undefined ? 'effective' : p.method;
+    if (!VALID_METHODS.includes(method)) throw new InputError(`Method must be one of [${VALID_METHODS.join(', ')}].`);
+    const freq = Number(p.frequency === undefined ? 2 : p.frequency);
+    if (!VALID_FREQUENCIES.includes(freq)) throw new InputError(`Frequency must be one of [${VALID_FREQUENCIES.join(', ')}].`);
+
+    const face = parseNumber(p.face, 'Face value');
+    const coupon = parseNumber(p.coupon, 'Coupon rate');
+    const years = parseNumber(p.years, 'Years to maturity');
+    if (years * freq > MAX_PERIODS + 0.5) throw new InputError(`Term is too long: at most ${MAX_PERIODS} compounding periods are supported.`);
+
+    let market, y_res = null;
+    if (mode === 'price') {
+      market = parseNumber(p.market, 'Market rate');
+    } else {
+      y_res = calculateYield(face, parseNumber(p.price, 'Present value'), coupon, years, freq, instrument);
+      market = y_res.nominal_yield;
+    }
+    const bond = calculateBond(face, coupon, market, years, freq, instrument);
+    const schedule = generateAmortizationSchedule(face, coupon, market, years, freq, method, instrument);
+    return { mode, bond, yield: y_res, market_rate: market, schedule };
+  }
+  /* ===== calculator core END ===== */
+
+  /* ---------- input state helpers ---------- */
+  const currentMode = () => document.querySelector('input[name="mode"]:checked').value;
+  const setOutput = (ctlId, on) => { $(ctlId).classList.toggle('is-output', on); $(ctlId).querySelector('input').readOnly = on; };
+
+  function applyFieldStates() {
+    const price = currentMode() === 'price';
+    setOutput('price-ctl', price);
+    setOutput('market-ctl', !price);
+    setOutput('coupon-ctl', f.zero.checked);
+    $('price-label').textContent = price ? 'Present Value (Calculated)' : 'Present Value (Issue Price) *';
+    $('market-label').textContent = price ? 'Annual Market Rate / Yield (YTM) *' : 'Annual Market Rate (Calculated)';
+    $('mode-status').textContent = 'Mode: ' + (price ? 'Calculate Price from Yield (PV Mode)' : 'Solve Yield & Effective Rate from Price');
+  }
+
+  function updatePeriodsNote() {
+    const years = Number(f.years.value.trim()), freq = Number(f.freq.value);
+    $('periods-note').textContent = f.years.value.trim() !== '' && Number.isFinite(years)
+      ? `${Math.round(years * freq)} compounding periods (${yearsText(years)} yrs @ ${freq}/yr)` : '';
+  }
+
+  function setZero(on) {
+    if (on) {
+      if (f.coupon.value !== '0.00' || savedCoupon === null) savedCoupon = f.coupon.value;
+      f.zero.checked = true;
+      f.coupon.value = '0.00';
+    } else {
+      f.zero.checked = false;
+      if (savedCoupon !== null) f.coupon.value = savedCoupon;
+    }
+    applyFieldStates();
+  }
+
+  function onInstrumentChange() {
+    if (f.instrument.value === 'serial_equal_payment') {
+      if (!f.zero.checked) setZero(true);
+    } else if (f.zero.checked && f.coupon.value === '0.00') {
+      savedCoupon = savedCoupon && savedCoupon !== '0.00' ? savedCoupon : '4.00';
+      setZero(false);
+    }
+    calculateNow();
+  }
+
+  function setFields(v) {
+    f.instrument.value = v.instrument; f.face.value = v.face; f.price.value = v.price; f.coupon.value = v.coupon;
+    f.market.value = v.market; f.years.value = v.years; f.freq.value = v.freq; f.method.value = v.method;
+    f.zero.checked = v.zero;
+    modeRadios.forEach((r) => { r.checked = r.value === v.mode; });
+    savedCoupon = null;
+    applyFieldStates(); updatePeriodsNote();
+  }
+
+  function loadPreset(name) {
+    const fx = (n) => fixed(n, decimals);
+    const base = { ...DEFAULTS, method: f.method.value };
+    const presets = {
+      term:    { instrument: 'term', face: fx(1000), coupon: fx(4), market: fx(6), years: '5', freq: '2', mode: 'price' },
+      serial:  { instrument: 'serial_equal_principal', face: fx(100000), coupon: fx(4), market: fx(6), years: '5', freq: '1', mode: 'price' },
+      note0:   { instrument: 'serial_equal_payment', face: fx(30000), coupon: fx(0), market: fx(6), years: '3', freq: '1', mode: 'price', zero: true },
+      notepar: { instrument: 'serial_equal_payment', face: fx(50000), coupon: fx(5), market: fx(5), years: '4', freq: '1', mode: 'price' },
+      yield:   { instrument: 'term', face: fx(1000), coupon: fx(4), market: fx(6), years: '5', freq: '2', mode: 'yield', price: fx(914.70) },
+    };
+    setFields({ ...base, ...presets[name] });
+    calculateNow();
+  }
+
+  function resetDefaults() {
+    decimals = 2;
+    setFields({ ...DEFAULTS });
+    updateDecimalsUI();
+    calculateNow();
+  }
+
+  /* ---------- calculation ---------- */
+  function buildPayload() {
+    const mode = currentMode();
+    const p = { mode, instrument: f.instrument.value, method: f.method.value, frequency: Number(f.freq.value),
+                face: f.face.value, coupon: f.coupon.value, years: f.years.value };
+    if (mode === 'price') p.market = f.market.value; else p.price = f.price.value;
+    return p;
+  }
+  const required = (p) => ['face', 'coupon', 'years', p.mode === 'price' ? 'market' : 'price'].every((k) => String(p[k]).trim() !== '');
+
+  function showError(msg) { $('error-text').textContent = msg; $('error').hidden = !msg; }
+
+  function scheduleCalc() { clearTimeout(timer); timer = setTimeout(calculateNow, 250); }
+
+  function calculateNow() {
+    clearTimeout(timer);
+    const payload = buildPayload();
+    if (!required(payload)) { showError('Please fill in all required fields.'); return; }
+    try {
+      last = compute(payload); lastPayload = payload;
+      showError('');
+      render();
+    } catch (e) {
+      if (e instanceof InputError) showError(e.message); else throw e;
+    }
+  }
+
+  /* ---------- rendering ---------- */
+  const setKpi = (n, title, val, sub) => { $(`k${n}t`).textContent = title; $(`k${n}v`).textContent = val; $(`k${n}s`).textContent = sub; };
+
+  function statusKpi(b, d) {
+    if (b.status === 'Discount') return [money(b.discount_amount, d), `DISCOUNT (${fixed(b.discount_percentage, d)}% of Par)`];
+    if (b.status === 'Premium') return [money(Math.abs(b.discount_amount), d), `PREMIUM (${fixed(Math.abs(b.discount_percentage), d)}% of Par)`];
+    return [money(0, d), 'PAR VALUE'];
+  }
+
+  function explanation(b, d, market) {
+    const m = (x) => money(x, d), p = (x) => pct(x, d);
+    if (b.instrument_type === 'serial_equal_principal') return [
+      `SERIAL BOND: Total principal of ${m(b.face_value)} is repaid in ${b.total_periods} equal installments of ${m(b.periodic_principal_payment)} per period.`,
+      'Periodic coupon interest decreases each period as outstanding principal is retired.',
+      `Present Value / Issue Price: ${m(b.bond_price)} (Discount/Premium: ${m(b.discount_amount)}).`,
+      `Ending carrying amount converges to $0.00 at the end of period ${b.total_periods} as the issue is fully retired.`,
+      `Total cash paid over life: ${m(b.total_cash_flows)} (Total interest expense: ${m(b.net_interest_expense)}, EAR: ${p(b.effective_annual_rate)}).`,
+    ];
+    if (b.instrument_type === 'serial_equal_payment') return [
+      `INSTALLMENT NOTE / ACCOUNTS PAYABLE & RECEIVABLE: Repaid in ${b.total_periods} equal periodic installments of ${m(b.periodic_total_payment)} each.`,
+      'Each payment covers interest on the carrying amount, with the remainder amortising the principal.',
+      `Present Value / Initial Carrying Amount: ${m(b.bond_price)} (Discount: ${m(b.discount_amount)}).`,
+      'Ending carrying amount converges exactly to $0.00 at maturity.',
+      `Total cash paid: ${m(b.total_cash_flows)} (Total net interest: ${m(b.net_interest_expense)}, EAR: ${p(b.effective_annual_rate)}).`,
+    ];
+    if (b.status === 'Discount') return [
+      `TERM BOND: Trades at a DISCOUNT of ${m(b.discount_amount)} (${fixed(b.discount_percentage, d)}% of par).`,
+      `Because coupon rate (${p(b.annual_coupon_rate)}) < market rate (${p(market)}), investors purchase the bond below par at ${m(b.bond_price)} to achieve the market yield.`,
+      `Entire principal of ${m(b.face_value)} is repaid at maturity, converging carrying amount to par.`,
+      `Total return: ${m(b.net_interest_expense)} (EAR: ${p(b.effective_annual_rate)}).`,
+    ];
+    if (b.status === 'Premium') return [
+      `TERM BOND: Trades at a PREMIUM of ${m(Math.abs(b.discount_amount))} (${fixed(Math.abs(b.discount_percentage), d)}% of par).`,
+      `Because coupon rate (${p(b.annual_coupon_rate)}) > market rate (${p(market)}), investors pay ${m(b.bond_price)} upfront for the higher coupon payments.`,
+      `Effective Annual Rate: ${p(b.effective_annual_rate)} (Nominal YTM: ${p(market)}).`,
+    ];
+    return [
+      `TERM BOND: Trades exactly at PAR VALUE (${m(b.face_value)}).`,
+      `Coupon rate equals required market yield (${p(market)}).`,
+      `Effective Annual Rate: ${p(b.effective_annual_rate)}.`,
+    ];
+  }
+
+  function render() {
+    if (!last) return;
+    const d = decimals, b = last.bond, market = last.market_rate, freq = b.frequency, priceMode = last.mode === 'price';
+    const m = (x) => money(x, d);
+
+    // Computed value goes back into the output field (plain number, like the desktop GUI)
+    if (priceMode) f.price.value = fixed(b.bond_price, d); else f.market.value = fixed(market, d);
+
+    // KPI cards
+    if (priceMode) {
+      const [dv, ds] = statusKpi(b, d);
+      setKpi(1, 'Present Value / Price', m(b.bond_price), 'Initial Carrying Amount');
+      setKpi(2, 'Discount / Premium', dv, ds);
+      setKpi(3, 'Annual Effective Rate (EAR)', pct(b.effective_annual_rate), `Nominal YTM: ${pct(market)}`);
+      if (b.instrument_type === 'serial_equal_principal') setKpi(4, 'Periodic Principal Repayment', m(b.periodic_principal_payment), `+ Initial Coupon ${m(b.periodic_coupon_payment)}`);
+      else if (b.instrument_type === 'serial_equal_payment') setKpi(4, 'Periodic Installment (PMT)', m(b.periodic_total_payment), `Equal payment ${freq}x/year`);
+      else setKpi(4, 'Periodic Coupon', m(b.periodic_coupon_payment), `Paid ${freq}x per year`);
+    } else {
+      const [dv, ds] = statusKpi(b, d);
+      setKpi(1, 'Nominal Yield to Maturity (YTM)', pct(market), `Annual Nominal Rate (${freq}x/yr)`);
+      setKpi(2, 'Annual Effective Rate (EAR)', pct(b.effective_annual_rate), 'Compounded Annual Rate');
+      setKpi(3, 'Discount / Premium', dv, ds);
+      setKpi(4, 'Periodic Cash Payment', m(b.periodic_total_payment), `Present Value: ${m(b.bond_price)}`);
+    }
+
+    // Breakdown
+    $('b-inst').textContent = INSTRUMENT_LABEL[b.instrument_type] || b.instrument_type;
+    $('b-pvc').textContent = m(b.pv_coupons);
+    $('b-pvp').textContent = m(b.pv_face_value);
+    $('b-ytm').textContent = pct(b.annual_market_rate);
+    $('b-ear').textContent = pct(b.effective_annual_rate);
+    $('b-per').textContent = `${b.total_periods} periods (${yearsText(b.years_to_maturity)} yrs @ ${freq}/yr)`;
+    $('b-int').textContent = m(b.total_coupon_interest);
+    $('b-cash').textContent = m(b.total_cash_flows);
+    $('b-net').textContent = m(b.net_interest_expense);
+
+    const ul = $('explanation');
+    ul.replaceChildren(...explanation(b, d, market).map((t) => Object.assign(document.createElement('li'), { textContent: t })));
+
+    // Schedule
+    $('sched-title').textContent = `Amortisation Table (${lastPayload.method === 'effective' ? 'Effective Interest' : 'Straight-Line'})`;
+    const rows = last.schedule.map((r) => {
+      const tr = document.createElement('tr');
+      [r.period, r.beginning_carrying_amount, r.interest_expense, r.coupon_payment, r.principal_repayment,
+       r.total_cash_payment, r.discount_amortization, r.ending_carrying_amount].forEach((v, i) => {
+        const td = document.createElement('td');
+        td.textContent = i === 0 ? String(v) : m(v);
+        tr.appendChild(td);
+      });
+      return tr;
+    });
+    $('sched-body').replaceChildren(...rows);
+  }
+
+  /* ---------- precision ---------- */
+  function updateDecimalsUI() {
+    $('decimals-label').textContent = `${decimals} Decimal${decimals === 1 ? '' : 's'}`;
+    $('dec-less').disabled = decimals <= 0;
+    $('dec-more').disabled = decimals >= 8;
+  }
+  function changeDecimals(delta) {
+    const next = Math.max(0, Math.min(8, decimals + delta));
+    if (next === decimals) return;
+    decimals = next; updateDecimalsUI(); render();     // pure display change - no server round-trip
+  }
+
+  /* ---------- CSV export (same columns and number format as export_schedule_to_csv in Python) ---------- */
+  function exportCsv() {
+    if (!last) { showError('No amortisation schedule available to export.'); return; }
+    const url = URL.createObjectURL(new Blob([scheduleToCsv(last.schedule, decimals)], { type: 'text/csv;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: 'bond_amortisation_schedule.csv' });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /* ---------- tabs ---------- */
+  const tabs = [$('tab-overview'), $('tab-schedule')];
+  function selectTab(tab, focus) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1;
+      $(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    if (focus) tab.focus();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => selectTab(t));
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); selectTab(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length], true); }
+    });
+  });
+
+  /* ---------- events ---------- */
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); calculateNow(); });
+  modeRadios.forEach((r) => r.addEventListener('change', () => { applyFieldStates(); calculateNow(); }));
+  f.instrument.addEventListener('change', onInstrumentChange);
+  f.freq.addEventListener('change', () => { updatePeriodsNote(); calculateNow(); });
+  f.method.addEventListener('change', calculateNow);
+  f.zero.addEventListener('change', () => { setZero(f.zero.checked); calculateNow(); });
+  ['face', 'price', 'coupon', 'market', 'years'].forEach((k) => f[k].addEventListener('input', () => { if (k === 'years') updatePeriodsNote(); scheduleCalc(); }));
+  document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => loadPreset(b.dataset.preset)));
+  $('reset').addEventListener('click', resetDefaults);
+  $('dec-less').addEventListener('click', () => changeDecimals(-1));
+  $('dec-more').addEventListener('click', () => changeDecimals(1));
+  $('export').addEventListener('click', exportCsv);
+
+  applyFieldStates(); updatePeriodsNote(); updateDecimalsUI();
+  calculateNow();
+})();
+</script>
+</body>
+</html>

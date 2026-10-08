@@ -37,7 +37,15 @@ Value long-term payables / receivables with live yield solving and amortisation.
 
 ## How to Run
 
-### 1. Launch HTML GUI (Default)
+### 1. HTML GUI (no installation, no server)
+Open **`index.html`** in any modern browser (double-click it). It is a single self-contained file:
+all calculations run inside the browser, nothing is uploaded, and it works offline.
+It can also be hosted as-is on GitHub Pages / any static web host.
+
+> Opening it from GitHub's file viewer only shows the source code. Download the file (or enable
+> GitHub Pages) to use it.
+
+### 2. Launch Desktop GUI (Tkinter)
 ```bash
 python app.py
 ```
@@ -46,20 +54,18 @@ Starts a local server on `127.0.0.1:8765` and opens the calculator in your brows
 identical to the desktop GUI and CLI. Standard library only; the server is reachable
 from this computer only. Press `Ctrl+C` to stop.
 
-### 2. Launch Legacy Desktop GUI (Tkinter)
+### 3. Launch Interactive CLI Mode
 ```bash
 python app.py --tk        # or: python bond_app.py
 ```
 
-### 3. Launch Interactive CLI Mode
-```bash
-python app.py --cli       # or: python bond_app.py --cli
-```
-
 ### 4. Run Automated Tests
 ```bash
-python -m unittest test_bond_calculator.py test_web_app.py -v
+python -m unittest test_bond_calculator.py test_index_parity.py -v
 ```
+`test_index_parity.py` runs the JavaScript inside `index.html` with Node.js on hundreds of random inputs
+and checks every number, error message and CSV file against `bond_calculator.py`
+(skipped automatically if Node.js is not installed).
 
 ---
 
@@ -105,12 +111,11 @@ $$\sum_{t=1}^n \frac{CF_t}{(1 + i)^t} - P = 0$$
 
 ```
 21-Sept-PVcalc/
-├── app.py                  # Entry point: HTML GUI (default), --tk, --cli
-├── web_app.py              # HTML GUI local server + JSON API (stdlib only)
-├── web/index.html          # HTML GUI front end (Morandi theme)
-├── bond_app.py             # Tkinter desktop GUI & CLI application
+├── index.html              # HTML GUI: single file, runs fully in the browser (JS port of the calculator)
+├── app.py                  # Standard entry point launcher
+├── bond_app.py             # Desktop GUI (Morandi theme) & CLI application
 ├── bond_calculator.py      # Core financial calculations, yield solver & amortisation
 ├── test_bond_calculator.py # Core unit test suite (19 tests)
-├── test_web_app.py         # HTML GUI back-end & server tests
+├── test_index_parity.py    # Checks the JavaScript in index.html against the Python core
 └── README.md               # Documentation & formula reference
 ```
