@@ -637,3 +637,21 @@ def export_schedule_to_csv(
                 "Ending Carrying Amount": f"{row.ending_carrying_amount:.{decimals}f}",
                 "Remaining Unamortised Discount": f"{row.remaining_discount:.{decimals}f}",
             })
+
+
+def describe_discount(result: BondResult, decimals: int = 2) -> "tuple[str, str]":
+    """
+    Text for the Discount / Premium KPI card: (value, subtitle).
+
+    Shared by both GUI modes so the two cannot drift apart. Discount and premium amounts are
+    shown as positive dollar values; a par instrument is shown as zero at the chosen precision.
+    """
+    d = decimals
+    if result.status == "Discount":
+        return (f"${result.discount_amount:,.{d}f}", f"DISCOUNT ({result.discount_percentage:.{d}f}% of Par)")
+    if result.status == "Premium":
+        return (
+            f"${abs(result.discount_amount):,.{d}f}",
+            f"PREMIUM ({abs(result.discount_percentage):.{d}f}% of Par)",
+        )
+    return (f"${0:,.{d}f}", "PAR VALUE")

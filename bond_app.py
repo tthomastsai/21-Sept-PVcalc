@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bond_calculator import (
     calculate_bond,
     calculate_yield,
+    describe_discount,
     generate_amortization_schedule,
     export_schedule_to_csv,
     BondResult,
@@ -899,15 +900,9 @@ class BondCalculatorApp(tk.Tk):
             self.kpi_c1_sub.set("Initial Carrying Amount")
 
             self.kpi_c2_title.set("Discount / Premium")
-            if res.status == "Discount":
-                self.kpi_c2_val.set(f"${res.discount_amount:,.{d}f}")
-                self.kpi_c2_sub.set(f"DISCOUNT ({res.discount_percentage:.{d}f}% of Par)")
-            elif res.status == "Premium":
-                self.kpi_c2_val.set(f"${abs(res.discount_amount):,.{d}f}")
-                self.kpi_c2_sub.set(f"PREMIUM ({abs(res.discount_percentage):.{d}f}% of Par)")
-            else:
-                self.kpi_c2_val.set(f"$0.{'0'*d}")
-                self.kpi_c2_sub.set("PAR VALUE")
+            c2_val, c2_sub = describe_discount(res, d)
+            self.kpi_c2_val.set(c2_val)
+            self.kpi_c2_sub.set(c2_sub)
 
             self.kpi_c3_title.set("Annual Effective Rate (EAR)")
             self.kpi_c3_val.set(f"{res.effective_annual_rate:.{d}f}%")
@@ -937,15 +932,9 @@ class BondCalculatorApp(tk.Tk):
             self.kpi_c2_sub.set("Compounded Annual Rate")
 
             self.kpi_c3_title.set("Discount / Premium")
-            if res.status == "Discount":
-                self.kpi_c3_val.set(f"${res.discount_amount:,.{d}f}")
-                self.kpi_c3_sub.set(f"DISCOUNT ({res.discount_percentage:.{d}f}% of Par)")
-            elif res.status == "Premium":
-                self.kpi_c2_val.set(f"${abs(res.discount_amount):,.{d}f}")
-                self.kpi_c3_sub.set(f"PREMIUM ({abs(res.discount_percentage):.{d}f}% of Par)")
-            else:
-                self.kpi_c3_val.set(f"$0.{'0'*d}")
-                self.kpi_c3_sub.set("PAR VALUE")
+            c3_val, c3_sub = describe_discount(res, d)
+            self.kpi_c3_val.set(c3_val)
+            self.kpi_c3_sub.set(c3_sub)
 
             self.kpi_c4_title.set("Periodic Cash Payment")
             self.kpi_c4_val.set(f"${res.periodic_total_payment:,.{d}f}")

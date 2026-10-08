@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bond_calculator import (
     calculate_bond,
     calculate_yield,
+    describe_discount,
     generate_amortization_schedule,
     export_schedule_to_csv,
     VALID_FREQUENCIES,
@@ -416,6 +417,36 @@ class TestBondCalculator(unittest.TestCase):
             instrument_type="serial_equal_payment",
         )
         self.assertAlmostEqual(y_inst.nominal_yield, 6.0, places=3)
+
+
+class TestDescribeDiscount(unittest.TestCase):
+    """Text of the Discount / Premium KPI card (shared by both GUI modes)."""
+
+    def test_discount(self):
+        res = calculate_bond(1000, 4.0, 6.0, 5, 2)
+        self.assertEqual(describe_discount(res, 2), ("$85.30", "DISCOUNT (8.53% of Par)"))
+
+    def test_premium_amount_is_positive(self):
+        # Regression: in yield mode the premium used to be written to the wrong card.
+        res = calculate_bond(1000, 8.0, 6.0, 5, 2)
+        value, sub = describe_discount(res, 2)
+        self.assertEqual(value, f"${abs(res.discount_amount):,.2f}")
+        self.assertTrue(sub.startswith("PREMIUM ("))
+        self.assertFalse(value.startswith("$-"))
+
+    def test_premium_from_yield_solver_matches_price_mode(self):
+        price_mode = calculate_bond(1000, 8.0, 6.0, 5, 2)
+        y = calculate_yield(1000, price_mode.bond_price, 8.0, years_to_maturity=5, frequency=2)
+        yield_mode = calculate_bond(1000, 8.0, y.nominal_yield, 5, 2)
+        self.assertEqual(describe_discount(yield_mode, 2), describe_discount(price_mode, 2))
+
+    def test_par_respects_decimal_places(self):
+        # Regression: 0 decimals used to render "$0." (stray decimal point).
+        res = calculate_bond(1000, 6.0, 6.0, 5, 2)
+        self.assertEqual(res.status, "Par")
+        self.assertEqual(describe_discount(res, 0), ("$0", "PAR VALUE"))
+        self.assertEqual(describe_discount(res, 2), ("$0.00", "PAR VALUE"))
+        self.assertEqual(describe_discount(res, 8), ("$0.00000000", "PAR VALUE"))
 
 
 if __name__ == "__main__":
