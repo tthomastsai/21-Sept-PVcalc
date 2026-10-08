@@ -449,5 +449,57 @@ class TestDescribeDiscount(unittest.TestCase):
         self.assertEqual(describe_discount(res, 8), ("$0.00000000", "PAR VALUE"))
 
 
+class TestNearZeroRates(unittest.TestCase):
+    """The textbook annuity formula (1-(1+i)^-n)/i collapses to 0/0 for tiny i; results must stay continuous."""
+
+    TINY_RATES = (1e-9, 1e-12, 1e-14, 1e-16, 1e-20)
+
+    def test_term_bond_price_is_continuous_towards_zero_rate(self):
+        at_zero = calculate_bond(1000, 4.0, 0.0, 5, 2).bond_price          # 1000 + 10 coupons of 20
+        self.assertAlmostEqual(at_zero, 1200.0, places=9)
+        for rate in self.TINY_RATES:
+            with self.subTest(market_rate_pct=rate):
+                self.assertAlmostEqual(calculate_bond(1000, 4.0, rate, 5, 2).bond_price, at_zero, delta=0.01)
+
+    def test_installment_note_price_is_continuous_towards_zero_rate(self):
+        for coupon in (0.0, 5.0):
+            at_zero = calculate_bond(30000, coupon, 0.0, 3, 1, "serial_equal_payment").bond_price
+            for rate in self.TINY_RATES:
+                with self.subTest(coupon=coupon, market_rate_pct=rate):
+                    res = calculate_bond(30000, coupon, rate, 3, 1, "serial_equal_payment")
+                    self.assertAlmostEqual(res.bond_price, at_zero, delta=0.01)
+
+    def test_tiny_stated_rate_does_not_divide_by_zero(self):
+        for coupon in (1e-9, 1e-13, 1e-16):
+            with self.subTest(coupon_pct=coupon):
+                res = calculate_bond(1000, coupon, 6.0, 3, 1, "serial_equal_payment")
+                self.assertAlmostEqual(res.periodic_total_payment, 1000 / 3, places=4)
+                y = calculate_yield(1000, res.bond_price, coupon, years_to_maturity=3, frequency=1,
+                                    instrument_type="serial_equal_payment")
+                self.assertAlmostEqual(y.nominal_yield, 6.0, places=4)
+
+    def test_yield_solver_round_trip_when_true_yield_is_about_zero(self):
+        total_cash_flows = 1200.0
+        for shave in (0.0, 1e-13, 1e-10, 1e-7):
+            price = total_cash_flows * (1 - shave)
+            with self.subTest(shave=shave):
+                y = calculate_yield(1000, price, 4.0, years_to_maturity=5, frequency=2)
+                self.assertAlmostEqual(y.nominal_yield, 0.0, delta=1e-3)
+                back = calculate_bond(1000, 4.0, y.nominal_yield, 5, 2).bond_price
+                self.assertAlmostEqual(back, price, delta=0.01)
+
+    def test_annuity_factor_matches_high_precision_reference(self):
+        from decimal import Decimal, getcontext
+        from bond_calculator import _annuity_factor
+
+        getcontext().prec = 60
+        for rate in (1e-18, 1e-14, 1e-10, 1e-7, 1e-5, 9.9e-5, 1.1e-4, 1e-3, 0.01, 0.05, 0.25):
+            for n in (1, 2, 10, 60, 360, 1200):
+                exact = (1 - (1 + Decimal(rate)) ** (-n)) / Decimal(rate)
+                with self.subTest(rate=rate, n=n):
+                    self.assertLess(abs((Decimal(_annuity_factor(rate, n)) - exact) / exact), Decimal("1e-12"))
+        self.assertEqual(_annuity_factor(0.0, 7), 7.0)
+
+
 if __name__ == "__main__":
     unittest.main()
