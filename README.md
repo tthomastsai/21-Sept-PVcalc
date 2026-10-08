@@ -31,7 +31,7 @@ Value long-term payables / receivables with live yield solving and amortisation.
   - One-click **Export to CSV** matching the active decimal precision with IFRS 9 headers.
   - Quick presets for Term Bonds, Serial Bonds, Installment Trade Notes, Par Bonds, and Yield Solvers.
 - **Automated Unit Tests**:
-  - 28 automated unit tests verifying term bonds, serial bonds, installment notes, yield solving, schedule convergence, near-zero-rate accuracy, GUI discount/premium text, and error bounds.
+  - 29 automated unit tests verifying term bonds, serial bonds, installment notes, yield solving, schedule convergence, near-zero-rate accuracy, GUI discount/premium text, and error bounds.
 
 ---
 
@@ -112,7 +112,7 @@ $$\sum_{t=1}^n \frac{CF_t}{(1 + i)^t} - P = 0$$
 ├── app.py                  # Standard entry point launcher
 ├── bond_app.py             # Desktop GUI (Morandi theme) & CLI application
 ├── bond_calculator.py      # Core financial calculations, yield solver & amortisation
-├── test_bond_calculator.py # Core unit test suite (28 tests)
+├── test_bond_calculator.py # Core unit test suite (29 tests)
 ├── test_index_parity.py    # Checks the JavaScript in index.html against the Python core
 └── README.md               # Documentation & formula reference
 ```
