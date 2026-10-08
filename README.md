@@ -18,7 +18,7 @@ Value long-term payables / receivables with live yield solving and amortisation.
   - **Mode 1 (PV Mode)**: Calculate Present Value / Initial Carrying Amount given Market Yield.
   - **Mode 2 (Yield Mode)**: Solve Nominal Yield (YTM) and Annual Effective Rate (EAR / AER) given Present Value / Price.
 - **Morandi Aesthetic Palette**:
-  - HTML and desktop GUIs styled in Giorgio Morandi-inspired low-saturation, soothing earthy tones (warm greige canvas `#f4f1ea`, muted slate header `#4d5656`, dusty sage buttons `#6c8276`, and terracotta/olive/mauve KPI accents).
+  - Desktop GUI styled in Giorgio Morandi-inspired low-saturation, soothing earthy tones (warm greige canvas `#f4f1ea`, muted slate header `#4d5656`, dusty sage buttons `#6c8276`, and terracotta/olive/mauve KPI accents).
 - **Amortisation Schedules**:
   - **Effective Interest Method**
   - **Straight-Line Method (prohibited by IFRS)**
@@ -37,35 +37,21 @@ Value long-term payables / receivables with live yield solving and amortisation.
 
 ## How to Run
 
-### 1. HTML GUI (no installation, no server)
-Open **`index.html`** in any modern browser (double-click it). It is a single self-contained file:
-all calculations run inside the browser, nothing is uploaded, and it works offline.
-It can also be hosted as-is on GitHub Pages / any static web host.
-
-> Opening it from GitHub's file viewer only shows the source code. Download the file (or enable
-> GitHub Pages) to use it.
-
-### 2. Launch Desktop GUI (Tkinter)
+### 1. Launch Desktop GUI (Default)
 ```bash
-python app.py
+python bond_app.py
 ```
-Starts a local server on `127.0.0.1:8765` and opens the calculator in your browser
-(options: `--port N`, `--no-browser`). It reuses `bond_calculator.py`, so results are
-identical to the desktop GUI and CLI. Standard library only; the server is reachable
-from this computer only. Press `Ctrl+C` to stop.
+*(or run `python app.py`)*
 
-### 3. Launch Interactive CLI Mode
+### 2. Launch Interactive CLI Mode
 ```bash
-python app.py --tk        # or: python bond_app.py
+python bond_app.py --cli
 ```
 
-### 4. Run Automated Tests
+### 3. Run Automated Tests
 ```bash
-python -m unittest test_bond_calculator.py test_index_parity.py -v
+python -m unittest test_bond_calculator.py -v
 ```
-`test_index_parity.py` runs the JavaScript inside `index.html` with Node.js on hundreds of random inputs
-and checks every number, error message and CSV file against `bond_calculator.py`
-(skipped automatically if Node.js is not installed).
 
 ---
 
@@ -111,11 +97,9 @@ $$\sum_{t=1}^n \frac{CF_t}{(1 + i)^t} - P = 0$$
 
 ```
 21-Sept-PVcalc/
-├── index.html              # HTML GUI: single file, runs fully in the browser (JS port of the calculator)
 ├── app.py                  # Standard entry point launcher
 ├── bond_app.py             # Desktop GUI (Morandi theme) & CLI application
 ├── bond_calculator.py      # Core financial calculations, yield solver & amortisation
-├── test_bond_calculator.py # Core unit test suite (19 tests)
-├── test_index_parity.py    # Checks the JavaScript in index.html against the Python core
+├── test_bond_calculator.py # Comprehensive unit test suite (19 tests)
 └── README.md               # Documentation & formula reference
 ```
