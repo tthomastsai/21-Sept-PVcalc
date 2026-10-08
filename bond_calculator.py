@@ -386,6 +386,11 @@ def calculate_yield(
 
         current_i = next_i
 
+    # A true yield of exactly 0 comes back as solver noise (e.g. -1e-15); snap it
+    # so the result is a clean 0 and never reads as a negative rate.
+    if abs(current_i) < 1e-12:
+        current_i = 0.0
+
     nominal_yield = current_i * frequency * 100.0
     effective_annual_rate = ((1.0 + current_i) ** frequency - 1.0) * 100.0
 

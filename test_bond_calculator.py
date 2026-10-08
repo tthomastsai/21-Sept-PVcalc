@@ -449,6 +449,22 @@ class TestDescribeDiscount(unittest.TestCase):
         self.assertEqual(describe_discount(res, 8), ("$0.00000000", "PAR VALUE"))
 
 
+class TestZeroYieldNoise(unittest.TestCase):
+    """Price equal to total payments means a yield of exactly 0 - never a tiny negative."""
+
+    def test_zero_yield_is_clean_and_round_trips(self):
+        for instr, face, coupon, years, freq in [
+            ("term", 12345.67, 5, 2, 1),
+            ("serial_equal_payment", 1000, 4, 2, 12),
+            ("serial_equal_principal", 1000, 6, 3, 2),
+        ]:
+            with self.subTest(instr=instr):
+                price = calculate_bond(face, coupon, 0.0, years, freq, instrument_type=instr).bond_price
+                y = calculate_yield(face, price, coupon, years, frequency=freq, instrument_type=instr)
+                self.assertEqual(y.nominal_yield, 0.0)
+                self.assertGreaterEqual(y.effective_annual_rate, 0.0)
+
+
 class TestNearZeroRates(unittest.TestCase):
     """The textbook annuity formula (1-(1+i)^-n)/i collapses to 0/0 for tiny i; results must stay continuous."""
 

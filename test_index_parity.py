@@ -91,10 +91,6 @@ def make_cases(n=600, seed=20260101):
         case = dict(mode=mode, instrument=inst, method=rnd.choice(["effective", "straight_line"]),
                     frequency=freq, face=face, coupon=coupon, years=years, market=market)
         if mode == "yield":
-            # A true yield of exactly 0 sits on a numerical cliff in bond_calculator.py itself
-            # ((1-(1+i)^-n)/i collapses for i < ~1e-14), so Python and JS may land on either side.
-            if market == 0:
-                continue
             try:
                 price = calculate_bond(face, coupon, market, years, freq, inst).bond_price
             except ValueError:
@@ -102,6 +98,19 @@ def make_cases(n=600, seed=20260101):
             case["price"] = price * rnd.choice([1.0, 1.0, 0.93, 1.07])
             del case["market"]
         cases.append(case)
+    # near-zero rates: the textbook annuity formula (1-(1+i)^-n)/i collapses to 0/0 here
+    for inst in ("term", "serial_equal_principal", "serial_equal_payment"):
+        for tiny in (1e-9, 1e-12, 1e-14, 1e-16, 1e-20):
+            cases.append(dict(mode="price", instrument=inst, method="effective", frequency=4,
+                              face=12345.67, coupon=8.75, years=5, market=tiny))
+    for coupon in (1e-9, 1e-13, 1e-16):
+        cases.append(dict(mode="price", instrument="serial_equal_payment", method="effective", frequency=1,
+                          face=1000, coupon=coupon, years=3, market=6))
+        cases.append(dict(mode="yield", instrument="serial_equal_payment", method="effective", frequency=1,
+                          face=1000, coupon=coupon, years=3, price=calculate_bond(1000, coupon, 6, 3, 1, "serial_equal_payment").bond_price))
+    for shave in (0.0, 1e-13, 1e-10, 1e-7):      # true yield ~ 0: price is (almost) the total cash flows
+        cases.append(dict(mode="yield", instrument="term", method="effective", frequency=4,
+                          face=12345.67, coupon=8.75, years=5, price=17746.900625 * (1 - shave)))
     # explicit error cases
     base = dict(mode="price", instrument="term", method="effective", frequency=2, face=1000, coupon=4, market=6, years=5)
     for k, v in [("face", 0), ("face", -5), ("coupon", -1), ("market", -1), ("years", 0), ("years", 0.0001)]:

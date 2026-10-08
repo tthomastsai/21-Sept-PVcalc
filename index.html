@@ -348,6 +348,15 @@
     return lo % 2 === 0 ? lo : lo + 1;
   }
 
+  // Present value of 1 paid each period: (1 - (1+rate)^-periods) / rate. The textbook form cancels to 0/0 for tiny
+  // rates (the whole interest stream drops out), so 1 - (1+r)^-n is evaluated as -expm1(-n * log1p(r)).
+  function annuityFactor(rate, periods) {
+    if (rate === 0) return periods;
+    return -Math.expm1(-periods * Math.log1p(rate)) / rate;
+  }
+  // Equal payment that fully amortises `principal` at periodic `rate` (principal / periods at 0%)
+  const levelPayment = (principal, rate, periods) => principal / annuityFactor(rate, periods);
+
   function checkFrequencyAndInstrument(frequency, instrument_type) {
     if (!VALID_FREQUENCIES.includes(frequency)) throw new InputError(`Frequency must be one of [${VALID_FREQUENCIES.join(', ')}] (got ${frequency}).`);
     if (!VALID_INSTRUMENTS.includes(instrument_type)) throw new InputError(`Instrument type must be one of [${VALID_INSTRUMENTS.join(', ')}] (got ${instrument_type}).`);
@@ -386,19 +395,11 @@
       bond_price = pv_coupons + pv_face_value;
       total_cash_flows = face_value + total_coupon_interest;
     } else if (instrument_type === 'serial_equal_payment') {
-      let pmt;
-      if (c > 0) {
-        const rate_c = c / frequency;
-        pmt = face_value * rate_c / (1.0 - Math.pow(1.0 + rate_c, -total_periods));
-      } else {
-        pmt = face_value / total_periods;
-      }
+      const pmt = levelPayment(face_value, c / frequency, total_periods);
       periodic_principal_payment = pmt;
       periodic_total_payment = pmt;
       periodic_coupon = c > 0 ? pmt - (face_value / total_periods) : 0.0;
-      bond_price = periodic_market_rate === 0
-        ? pmt * total_periods
-        : pmt * (1.0 - Math.pow(1.0 + periodic_market_rate, -total_periods)) / periodic_market_rate;
+      bond_price = pmt * annuityFactor(periodic_market_rate, total_periods);
       total_cash_flows = pmt * total_periods;
       total_coupon_interest = Math.max(0.0, total_cash_flows - face_value);
       pv_face_value = Math.min(face_value, bond_price);
@@ -412,8 +413,7 @@
         pv_coupons = periodic_coupon * total_periods;
       } else {
         pv_face_value = face_value / Math.pow(1.0 + periodic_market_rate, total_periods);
-        pv_coupons = periodic_coupon === 0 ? 0.0
-          : periodic_coupon * (1.0 - Math.pow(1.0 + periodic_market_rate, -total_periods)) / periodic_market_rate;
+        pv_coupons = periodic_coupon * annuityFactor(periodic_market_rate, total_periods);
       }
       bond_price = pv_coupons + pv_face_value;
       total_coupon_interest = periodic_coupon * total_periods;
@@ -455,7 +455,7 @@
       const p_prin = face_value / total_periods;
       for (let t = 1; t <= total_periods; t++) cash_flows.push(p_prin + (face_value - (t - 1) * p_prin) * c);
     } else if (instrument_type === 'serial_equal_payment') {
-      const pmt = c > 0 ? face_value * c / (1.0 - Math.pow(1.0 + c, -total_periods)) : face_value / total_periods;
+      const pmt = levelPayment(face_value, c, total_periods);
       for (let t = 0; t < total_periods; t++) cash_flows.push(pmt);
     } else {
       const periodic_coupon = face_value * c;
@@ -504,6 +504,8 @@
       if (Math.abs(next_i - current_i) < tolerance) { current_i = next_i; break; }
       current_i = next_i;
     }
+    // snap solver noise around a true yield of 0 (mirrors bond_calculator.py)
+    if (Math.abs(current_i) < 1e-12) current_i = 0.0;
     return { nominal_yield: current_i * frequency * 100.0, effective_annual_rate: (Math.pow(1.0 + current_i, frequency) - 1.0) * 100.0,
              periodic_yield: current_i, total_periods, years_to_maturity: years, iterations };
   }
