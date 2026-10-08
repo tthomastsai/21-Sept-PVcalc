@@ -15,6 +15,7 @@ This module provides functions and data structures for:
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 import csv
+import math
 
 
 @dataclass
@@ -93,6 +94,24 @@ VALID_INSTRUMENT_TYPES = {
 }
 
 
+def _annuity_factor(rate: float, periods: int) -> float:
+    """
+    Present value of 1 paid at the end of each of `periods` periods: (1 - (1 + rate)^-periods) / rate.
+
+    The textbook form subtracts two nearly equal numbers when `rate` is tiny (it collapses to 0/0 below
+    ~1e-14), silently dropping the whole interest stream. Writing 1 - (1+r)^-n as -expm1(-n * log1p(r))
+    stays accurate for every rate; a rate of exactly 0 gives `periods`.
+    """
+    if rate == 0:
+        return float(periods)
+    return -math.expm1(-periods * math.log1p(rate)) / rate
+
+
+def _level_payment(principal: float, rate: float, periods: int) -> float:
+    """Equal payment that fully amortises `principal` at periodic `rate` (principal / periods at 0%)."""
+    return principal / _annuity_factor(rate, periods)
+
+
 def calculate_bond(
     face_value: float,
     annual_coupon_rate: float,
@@ -160,20 +179,13 @@ def calculate_bond(
 
     elif instrument_type == "serial_equal_payment":
         # Installment Accounts Payable/Receivable: Equal total periodic installment (annuity)
-        if c > 0:
-            rate_c = c / frequency
-            pmt = face_value * rate_c / (1.0 - (1.0 + rate_c) ** (-total_periods))
-        else:
-            pmt = face_value / total_periods
+        pmt = _level_payment(face_value, c / frequency, total_periods)
 
         periodic_principal_payment = pmt
         periodic_total_payment = pmt
         periodic_coupon = pmt - (face_value / total_periods) if c > 0 else 0.0
 
-        if periodic_market_rate == 0:
-            bond_price = pmt * total_periods
-        else:
-            bond_price = pmt * (1.0 - (1.0 + periodic_market_rate) ** (-total_periods)) / periodic_market_rate
+        bond_price = pmt * _annuity_factor(periodic_market_rate, total_periods)
 
         total_cash_flows = pmt * total_periods
         total_coupon_interest = max(0.0, total_cash_flows - face_value)
@@ -190,10 +202,7 @@ def calculate_bond(
             pv_coupons = periodic_coupon * total_periods
         else:
             pv_face_value = face_value / ((1.0 + periodic_market_rate) ** total_periods)
-            if periodic_coupon == 0:
-                pv_coupons = 0.0
-            else:
-                pv_coupons = periodic_coupon * (1.0 - (1.0 + periodic_market_rate) ** (-total_periods)) / periodic_market_rate
+            pv_coupons = periodic_coupon * _annuity_factor(periodic_market_rate, total_periods)
 
         bond_price = pv_coupons + pv_face_value
         total_coupon_interest = periodic_coupon * total_periods
@@ -294,10 +303,7 @@ def calculate_yield(
             f_beg = face_value - (t - 1) * p_prin
             cash_flows.append(p_prin + f_beg * c)
     elif instrument_type == "serial_equal_payment":
-        if c > 0:
-            pmt = face_value * c / (1.0 - (1.0 + c) ** (-total_periods))
-        else:
-            pmt = face_value / total_periods
+        pmt = _level_payment(face_value, c, total_periods)
         cash_flows = [pmt] * total_periods
     else:  # "term"
         periodic_coupon = face_value * c
