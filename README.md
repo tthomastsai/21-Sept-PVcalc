@@ -47,13 +47,16 @@ It can also be hosted as-is on GitHub Pages / any static web host.
 
 ### 2. Launch Desktop GUI (Tkinter)
 ```bash
-python bond_app.py
+python app.py
 ```
-*(or run `python app.py`)*
+Starts a local server on `127.0.0.1:8765` and opens the calculator in your browser
+(options: `--port N`, `--no-browser`). It reuses `bond_calculator.py`, so results are
+identical to the desktop GUI and CLI. Standard library only; the server is reachable
+from this computer only. Press `Ctrl+C` to stop.
 
 ### 3. Launch Interactive CLI Mode
 ```bash
-python bond_app.py --cli
+python app.py --tk        # or: python bond_app.py
 ```
 
 ### 4. Run Automated Tests
