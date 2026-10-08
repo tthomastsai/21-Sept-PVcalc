@@ -18,7 +18,7 @@ Value long-term payables / receivables with live yield solving and amortisation.
   - **Mode 1 (PV Mode)**: Calculate Present Value / Initial Carrying Amount given Market Yield.
   - **Mode 2 (Yield Mode)**: Solve Nominal Yield (YTM) and Annual Effective Rate (EAR / AER) given Present Value / Price.
 - **Morandi Aesthetic Palette**:
-  - Desktop GUI styled in Giorgio Morandi-inspired low-saturation, soothing earthy tones (warm greige canvas `#f4f1ea`, muted slate header `#4d5656`, dusty sage buttons `#6c8276`, and terracotta/olive/mauve KPI accents).
+  - HTML and desktop GUIs styled in Giorgio Morandi-inspired low-saturation, soothing earthy tones (warm greige canvas `#f4f1ea`, muted slate header `#4d5656`, dusty sage buttons `#6c8276`, and terracotta/olive/mauve KPI accents).
 - **Amortisation Schedules**:
   - **Effective Interest Method**
   - **Straight-Line Method (prohibited by IFRS)**
@@ -37,20 +37,28 @@ Value long-term payables / receivables with live yield solving and amortisation.
 
 ## How to Run
 
-### 1. Launch Desktop GUI (Default)
+### 1. Launch HTML GUI (Default)
 ```bash
-python bond_app.py
+python app.py
 ```
-*(or run `python app.py`)*
+Starts a local server on `127.0.0.1:8765` and opens the calculator in your browser
+(options: `--port N`, `--no-browser`). It reuses `bond_calculator.py`, so results are
+identical to the desktop GUI and CLI. Standard library only; the server is reachable
+from this computer only. Press `Ctrl+C` to stop.
 
-### 2. Launch Interactive CLI Mode
+### 2. Launch Legacy Desktop GUI (Tkinter)
 ```bash
-python bond_app.py --cli
+python app.py --tk        # or: python bond_app.py
 ```
 
-### 3. Run Automated Tests
+### 3. Launch Interactive CLI Mode
 ```bash
-python -m unittest test_bond_calculator.py -v
+python app.py --cli       # or: python bond_app.py --cli
+```
+
+### 4. Run Automated Tests
+```bash
+python -m unittest test_bond_calculator.py test_web_app.py -v
 ```
 
 ---
@@ -97,9 +105,12 @@ $$\sum_{t=1}^n \frac{CF_t}{(1 + i)^t} - P = 0$$
 
 ```
 21-Sept-PVcalc/
-├── app.py                  # Standard entry point launcher
-├── bond_app.py             # Desktop GUI (Morandi theme) & CLI application
+├── app.py                  # Entry point: HTML GUI (default), --tk, --cli
+├── web_app.py              # HTML GUI local server + JSON API (stdlib only)
+├── web/index.html          # HTML GUI front end (Morandi theme)
+├── bond_app.py             # Tkinter desktop GUI & CLI application
 ├── bond_calculator.py      # Core financial calculations, yield solver & amortisation
-├── test_bond_calculator.py # Comprehensive unit test suite (19 tests)
+├── test_bond_calculator.py # Core unit test suite (19 tests)
+├── test_web_app.py         # HTML GUI back-end & server tests
 └── README.md               # Documentation & formula reference
 ```
